@@ -247,21 +247,3 @@ For issues or questions, open an issue on GitHub.
 ---
 
 Built with 🛡️ for security enthusiasts
-
----
-
-# Web dashboard (optional)
-flask==2.3.0
-jinja2==3.1.2
-
-# Utilities
-python-dateutil==2.8.2
-
-# Windows-specific
-wmi==1.5.1
-pywin32==306
-
-# Development
-pytest==7.4.0
-black==23.7.0
-```
