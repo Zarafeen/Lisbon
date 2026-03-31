@@ -190,7 +190,7 @@ Privacy Hardening
 
 📝 Requirements
 
-· Python 3.8+ - Download
+· Python 3.8+ - https://www.python.org/downloads/
 · Windows 10/11 (Linux/macOS support coming)
 · Administrator privileges for fixes
 · Git for cloning (optional)
