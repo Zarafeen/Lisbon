@@ -7,9 +7,18 @@ import platform
 import subprocess
 import json
 import yaml
+import requests  # ADDED: Missing import
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
+
+# Try to import colorama for Windows color support
+try:
+    import colorama
+    colorama.init()
+    COLOR_SUPPORT = True
+except ImportError:
+    COLOR_SUPPORT = False
 
 
 class Logger:
@@ -157,7 +166,6 @@ class SystemInfo:
     def get_ip() -> str:
         """Get public IP address"""
         try:
-            import requests
             response = requests.get('https://api.ipify.org', timeout=5)
             return response.text.strip()
         except:
@@ -177,17 +185,23 @@ def print_banner():
 
 
 def print_progress(message: str, status: str = "info"):
-    """Print formatted progress message"""
+    """Print formatted progress message with color support"""
     colors = {
-        "info": "\033[94m",    # Blue
+        "info": "\033[94m",     # Blue
         "success": "\033[92m",  # Green
         "warning": "\033[93m",  # Yellow
         "error": "\033[91m",    # Red
         "reset": "\033[0m"
     }
     
-    if sys.platform == "win32":
-        # Windows doesn't support ANSI colors by default
+    # Check if we can use colors
+    use_colors = False
+    if sys.platform != "win32":  # Linux/Mac always support colors
+        use_colors = True
+    elif COLOR_SUPPORT:  # Windows with colorama
+        use_colors = True
+    
+    if not use_colors:
         print(f"[{status.upper()}] {message}")
     else:
         print(f"{colors.get(status, colors['info'])}[{status.upper()}]{colors['reset']} {message}")
