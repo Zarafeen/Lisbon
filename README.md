@@ -238,13 +238,6 @@ For issues or questions, open an issue on GitHub.
 Built with 🛡️ for security enthusiasts
 
 ---
-pyyaml==6.0
-psutil==5.9.5
-colorama==0.4.6
-tabulate==0.9.0
-
-# Monitoring and scheduling
-schedule==1.2.0
 
 # Web dashboard (optional)
 flask==2.3.0
