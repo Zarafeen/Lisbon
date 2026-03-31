@@ -1,0 +1,26 @@
+{
+  "suspicious_processes": [
+    "vnc", "remote", "teamviewer", "anydesk", "tightvnc",
+    "radmin", "logmein", "gotomypc", "splashtop", "ultravnc"
+  ],
+  "vulnerable_ports": [21, 23, 25, 445, 1433, 3306, 3389, 5900, 5800],
+  "webrtc_ports": [3478, 3479, 3480, 3481, 16384, 16385, 16386, 16387, 10000, 20000],
+  "secure_dns_servers": ["1.1.1.1", "8.8.8.8", "9.9.9.9", "208.67.222.222", "208.67.220.220"],
+  "critical_registry_keys": [
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+  ],
+  "sensitive_directories": [
+    "Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"
+  ],
+  "timezone_mapping": {
+    "germany": "Central European Standard Time",
+    "france": "Central European Standard Time",
+    "uk": "GMT Standard Time",
+    "us-east": "Eastern Standard Time",
+    "us-west": "Pacific Standard Time",
+    "japan": "Tokyo Standard Time",
+    "australia": "AUS Eastern Standard Time"
+  }
+}
