@@ -285,10 +285,8 @@ class FileMonitorHandler(FileSystemEventHandler):
                 self._check_malicious_extension(safe_path)
     
     def _sanitize_path(self, file_path):
-        """Sanitize file path"""
-        if SANITIZER_AVAILABLE and InputSanitizer:
-            return InputSanitizer.sanitize_filename(file_path)
-        return file_path
+        """Normalize paths from watchdog without mangling separators"""
+        return _normalize_path(file_path)
             
     def _check_ransomware_pattern(self, file_path):
         """Check for ransomware-like file modifications"""
@@ -359,7 +357,7 @@ class MalwareScanner:
             return None
             
         # Try to load from external file first
-        yara_file = Path("config/malware_rules.yar")
+        yara_file = _resolve_config_file("malware_rules.yar")
         if yara_file.exists():
             try:
                 rules = yara.compile(filepath=str(yara_file))
@@ -415,7 +413,7 @@ class MalwareScanner:
         
         try:
             # Try to load from local file
-            sig_file = Path("config/malware_hashes.txt")
+            sig_file = _resolve_config_file("malware_hashes.txt")
             if sig_file.exists():
                 with open(sig_file, 'r') as f:
                     for line in f:
@@ -440,12 +438,10 @@ class MalwareScanner:
         }
         
         # Validate file path
-        if SANITIZER_AVAILABLE and InputSanitizer:
-            safe_path = InputSanitizer.sanitize_filename(file_path)
-            if not safe_path:
-                self.logger.debug(f"Invalid file path: {file_path}")
-                return results
-            file_path = safe_path
+        file_path = _normalize_path(file_path)
+        if not file_path:
+            self.logger.debug(f"Invalid file path: {file_path}")
+            return results
         
         try:
             # Check if file exists and is readable
@@ -497,12 +493,10 @@ class MalwareScanner:
         """Scan entire directory for malware with progress tracking and path validation"""
         
         # Validate directory path
-        if SANITIZER_AVAILABLE and InputSanitizer:
-            safe_dir = InputSanitizer.sanitize_filename(directory)
-            if not safe_dir:
-                self.logger.error(f"Invalid directory path: {directory}")
-                return []
-            directory = safe_dir
+        directory = _normalize_path(directory)
+        if not directory:
+            self.logger.error(f"Invalid directory path: {directory}")
+            return []
         
         self.logger.info(f"Scanning directory: {directory}")
         threats = []
@@ -523,12 +517,6 @@ class MalwareScanner:
             
             for file in files:
                 # Validate filename
-                if SANITIZER_AVAILABLE and InputSanitizer:
-                    safe_file = InputSanitizer.sanitize_filename(file)
-                    if not safe_file:
-                        continue
-                    file = safe_file
-                
                 file_path = os.path.join(root, file)
                 ext = os.path.splitext(file)[1].lower()
                 
@@ -860,3 +848,27 @@ class BehavioralAnalyzer:
         except Exception as e:
             self.logger.error(f"Anomaly detection failed: {e}")
             return []
+
+
+def _resolve_config_file(filename: str) -> Path:
+    """Resolve configuration files from either config/ or the current cofigs/ directory."""
+    base_dir = Path(__file__).resolve().parent.parent
+    for folder in ("cofigs", "config"):
+        candidate = base_dir / folder / filename
+        if candidate.exists():
+            return candidate
+    return base_dir / "cofigs" / filename
+
+
+def _normalize_path(path_value: Optional[str]) -> Optional[str]:
+    """Normalize full file or directory paths without stripping separators."""
+    if not path_value:
+        return None
+
+    if "\x00" in path_value:
+        return None
+
+    try:
+        return str(Path(path_value).expanduser().resolve(strict=False))
+    except Exception:
+        return None

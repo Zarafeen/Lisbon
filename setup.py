@@ -103,8 +103,8 @@ setup(
     entry_points={
         'console_scripts': [
             'security-agent=src.agent:main',
-            'security-audit=src.agent:audit_cli',
-            'security-monitor=src.monitor:monitor_cli',
+            'security-audit=src.agent:main',
+            'security-monitor=src.agent:main',
         ],
     },
     keywords="security, audit, vulnerability, malware, ransomware, protection, monitoring",

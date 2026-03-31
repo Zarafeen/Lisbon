@@ -1,5 +1,5 @@
 """
-Security Agent - Autonomous Security Tool
+Security Agent - Autonomous Security Tool.
 
 A comprehensive security auditing and remediation tool for Windows PCs.
 """
@@ -15,9 +15,9 @@ from .reporter import SecurityReporter
 from .monitor import SecurityMonitor
 
 __all__ = [
-    'SecurityAgent',
-    'SecurityAuditor',
-    'SecurityFixer',
-    'SecurityReporter',
-    'SecurityMonitor',
+    "SecurityAgent",
+    "SecurityAuditor",
+    "SecurityFixer",
+    "SecurityReporter",
+    "SecurityMonitor",
 ]

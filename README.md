@@ -1,249 +1,144 @@
 ![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)
-![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
+![Status](https://img.shields.io/badge/status-beta-yellow.svg)
 
-# 🔒 Liston - Autonomous PC Security Tool
+# Lisbon
 
-An AI-powered security agent that automatically audits and fixes vulnerabilities on your PC. No more manual security checks - let the agent handle it!
+Lisbon is a Windows-focused security auditing and remediation tool. It audits common local security issues, applies selected fixes, generates reports, and offers optional monitoring and advanced protection modules.
 
-## 📋 Table of Contents
-- [✨ Features](#-features)
-- [🚀 Quick Start](#-quick-start)
-- [📋 Security Checks](#-security-checks)
-- [📊 Report Example](#-report-example)
-- [🛠️ Advanced Usage](#️-advanced-usage)
-- [📁 Project Structure](#-project-structure)
-- [🔒 Security Features](#-security-features)
-- [🐛 Troubleshooting](#-troubleshooting)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
+## Features
 
-## ✨ Features
+- Configurable security audit checks
+- Automatic remediation for supported findings
+- Report generation in `txt`, `json`, and `html`
+- Continuous monitoring loop
+- Optional advanced modules for:
+  - real-time file and process monitoring
+  - malware scanning
+  - network monitoring
+  - software vulnerability checks
+  - behavioral anomaly detection
 
-- 🛡️ **20+ Security Checks** - Comprehensive system audit
-- 🔧 **Auto-Fix** - Automatically fixes common vulnerabilities
-- 📊 **Detailed Reports** - TXT, JSON, and HTML formats
-- 🚨 **Real-time Monitoring** - Continuous security monitoring
-- 🌐 **DNS Protection** - Blocks DNS leaks automatically
-- 🔌 **WebRTC Block** - Prevents IP leaks through WebRTC
-- 🕐 **Timezone Spoofing** - Hides your real location
-- 📝 **Complete Logging** - Track all security events
+## Scope
 
-## 🚀 Quick Start
+- Primary target: Windows 10/11
+- Python 3.8+
+- Administrator privileges recommended for most fix operations
+- Best treated as a personal/local beta tool until it has stronger test coverage
 
-### Installation
+## Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/Zarafeen/Lisbon.git
 cd Lisbon
-
-# Install dependencies
 pip install -r requirements.txt
+python src/agent.py --audit --report
+```
 
-# Run security audit
-python src/agent.py --audit
-
-# Auto-fix vulnerabilities
-python src/agent.py --fix
-
-# Start continuous monitoring
-python src/agent.py --monitor
-
-Windows PowerShell (Run as Administrator)
+Windows PowerShell:
 
 ```powershell
-# Quick audit
 python src/agent.py --audit --report
-
-# Fix all issues
 python src/agent.py --fix
-
-# Monitor system
 python src/agent.py --monitor
 ```
 
-📋 Security Checks Performed
+## CLI Usage
 
-Category Checks
-System Security Windows Updates, Firewall Status, Antivirus Status
-Network Security DNS Security, WebRTC Leaks, Open Ports
-Privacy Telemetry, Browser Security, Timezone Spoofing
-Access Control Password Policy, User Accounts, Permissions
-Malware Prevention Suspicious Processes, Autostart Items, Scheduled Tasks
-Data Protection Disk Encryption, Network Shares, Registry Security
-
-📊 Report Example
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║                 SECURITY AGENT REPORT                         ║
-╚══════════════════════════════════════════════════════════════╝
-
-Generated: 2026-03-31 10:30:00
-System: Windows 11
-Risk Score: 25/100
-Vulnerabilities Found: 3
-
-VULNERABILITIES:
-  [MEDIUM] DNS Security
-      → Using ISP DNS servers
-  [LOW] Telemetry
-      → Telemetry sending data to Microsoft
-  [MEDIUM] Browser Security
-      → Browser security not fully configured
-
-FIXES APPLIED:
-  ✓ Set secure DNS (1.1.1.1) and blocked DNS leaks
-  ✓ Disabled Windows telemetry
-  ✓ Applied browser hardening
+```bash
+python src/agent.py --audit
+python src/agent.py --audit --report
+python src/agent.py --fix
+python src/agent.py --monitor
+python src/agent.py --rtp
+python src/agent.py --malware-scan
+python src/agent.py --vuln-scan
+python src/agent.py --behavior
+python src/agent.py --network-monitor
 ```
 
-🛠️ Advanced Usage
+Quick launcher:
 
-Custom Configuration
+```bash
+python scripts/run_agent.py
+```
 
-Edit config/settings.yaml to customize:
+## Configuration
+
+The repository currently stores configuration in `cofigs/`.
+
+Key files:
+
+- `cofigs/settings.yaml`
+- `cofigs/rules.json`
+- `cofigs/malware_rules.yar`
+
+Example:
 
 ```yaml
 agent:
   auto_fix: true
-  report_format: "html"  # txt, json, html
-
-audit:
-  enabled_checks:
-    - firewall_status
-    - dns_security
-    - webrtc_leaks
 
 monitor:
-  interval_seconds: 300  # Check every 5 minutes
+  interval_seconds: 300
   alert_on_critical: true
+
+reporting:
+  report_format: "html"
 ```
 
-Schedule Regular Audits
+## Project Structure
 
-Windows Task Scheduler:
-
-```powershell
-# Create scheduled task for daily audit at 3 AM
-$action = New-ScheduledTaskAction -Execute "python" -Argument "C:\path\to\security-agent\src\agent.py --audit --report"
-$trigger = New-ScheduledTaskTrigger -Daily -At "3:00AM"
-Register-ScheduledTask -TaskName "SecurityAudit" -Action $action -Trigger $trigger
-```
-
-📁 Project Structure
-
-```
-security-agent/
-├── README.md              # This file
-├── requirements.txt       # Python dependencies
-├── setup.py              # Installation setup
-├── .gitignore            # Git ignore rules
-├── LICENSE               # MIT License
-├── config/
-│   ├── settings.yaml     # Configuration settings
-│   └── rules.json        # Security rules
-├── src/
-│   ├── __init__.py       # Package init
-│   ├── agent.py          # Main agent
-│   ├── auditor.py        # Security audit
-│   ├── fixer.py          # Auto-fix
-│   ├── reporter.py       # Report generation
-│   ├── monitor.py        # Continuous monitoring
-│   └── utils.py          # Utilities
+```text
+Lisbon/
+├── README.md
+├── requirements.txt
+├── setup.py
+├── LICENSE
+├── cofigs/
+│   ├── settings.yaml
+│   ├── rules.json
+│   └── malware_rules.yar
 ├── scripts/
-│   ├── run_agent.py      # Quick launcher
-│   ├── install.ps1       # Windows install
-│   └── install.sh        # Linux install
-├── tests/                # Unit tests
-├── reports/              # Generated reports
-└── logs/                 # Log files
+│   └── run_agent.py
+└── src/
+    ├── __init__.py
+    ├── agent.py
+    ├── auditor.py
+    ├── fixer.py
+    ├── reporter.py
+    ├── monitor.py
+    ├── advanced_protection.py
+    ├── sanitizer.py
+    ├── threat_logger.py
+    └── utils.py
 ```
 
-🔒 Security Features
+## Main Modules
 
-DNS Leak Protection
+- `agent.py`: CLI entrypoint and orchestration
+- `auditor.py`: security checks
+- `fixer.py`: automatic remediation
+- `reporter.py`: report generation and retention cleanup
+- `monitor.py`: scheduled monitoring loop
+- `advanced_protection.py`: optional real-time and scanning features
+- `sanitizer.py`: input and path validation helpers
+- `utils.py`: config loading, logging, and system helpers
 
-· Blocks all DNS queries outside VPN
-· Forces encrypted DNS (DNS over HTTPS)
-· Prevents ISP tracking
+## Notes
 
-WebRTC Block
+- Some advanced features depend on optional packages such as `yara-python`, `watchdog`, `scapy`, and `scikit-learn`.
+- Real-time monitoring and remediation features can change local system state.
+- The current config directory name is `cofigs/` because that is how the repository is presently structured.
 
-· Blocks STUN/TURN ports
-· Prevents local IP leaks
-· Works with any browser
-
-Anti-Fingerprinting
-
-· Timezone spoofing
-· Language spoofing
-· Browser fingerprint protection
-
-Privacy Hardening
-
-· Disables telemetry
-· Blocks tracking
-· Cleans browser data
-
-📝 Requirements
-
-· Python 3.8+ - https://www.python.org/downloads/
-· Windows 10/11 (Linux/macOS support coming)
-· Administrator privileges for fixes
-· Git for cloning (optional)
-
-🐛 Troubleshooting
-
-"Permission denied" errors
-
-Run as Administrator (Windows) or with sudo (Linux)
-
-"Module not found" errors
+## Development
 
 ```bash
 pip install -r requirements.txt
+python -m py_compile src\__init__.py src\agent.py src\auditor.py src\advanced_protection.py src\utils.py setup.py
 ```
 
-DNS blocking not working
+## License
 
-```bash
-# Check firewall rules
-netsh advfirewall firewall show rule name="BlockDNS_UDP"
-```
-
-WebRTC still leaking
-
-Visit https://browserleaks.com/webrtc to verify blocking
-
-🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (git checkout -b feature/AmazingFeature)
-3. Commit changes (git commit -m 'Add AmazingFeature')
-4. Push to branch (git push origin feature/AmazingFeature)
-5. Open Pull Request
-
-📄 License
-
-Distributed under the MIT License. See LICENSE for more information.
-
-👤 Author
-
-Zarafeen
-
-· GitHub: @Zarafeen
-
-⭐ Show Your Support
-
-Give a ⭐️ if this project helped you!
-
-📧 Contact
-
-For issues or questions, open an issue on GitHub.
-
----
-
-Built with 🛡️ for security enthusiasts
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.

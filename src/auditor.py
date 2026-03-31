@@ -21,6 +21,7 @@ class SecurityAuditor:
     def run_all_checks(self) -> List[Dict[str, Any]]:
         """Run all enabled security checks"""
         self.logger.info("Running security audits...")
+        self.vulnerabilities = []
         
         enabled_checks = self.config.get('audit.enabled_checks', [])
         

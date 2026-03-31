@@ -29,10 +29,13 @@ except ImportError:
     print_progress("Advanced protection modules not available", "warning")
 
 
+DEFAULT_CONFIG_DIR = "cofigs"
+
+
 class SecurityAgent:
     """Main security agent orchestrator"""
     
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self, config_dir: str = DEFAULT_CONFIG_DIR):
         self.config_dir = Path(config_dir)
         self.config_loader = ConfigLoader(str(self.config_dir))
         self.system = SystemInfo()
@@ -272,7 +275,7 @@ Examples:
     parser.add_argument('--fix', action='store_true', help='Auto-fix vulnerabilities')
     parser.add_argument('--monitor', action='store_true', help='Start continuous monitoring')
     parser.add_argument('--report', action='store_true', help='Generate report (with audit)')
-    parser.add_argument('--config', default='config', help='Config directory path')
+    parser.add_argument('--config', default=DEFAULT_CONFIG_DIR, help='Config directory path')
     
     # Advanced features
     parser.add_argument('--rtp', action='store_true', help='Start real-time protection')

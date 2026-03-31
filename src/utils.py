@@ -37,22 +37,31 @@ class Logger:
     def __init__(self, name: str, log_file: Optional[str] = None):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG)
-        
-        # Console handler
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
+        self.logger.propagate = False
+
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
+
+        if not self.logger.handlers:
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            ch.setFormatter(formatter)
+            self.logger.addHandler(ch)
         
-        # File handler
         if log_file:
-            fh = logging.FileHandler(log_file)
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(formatter)
-            self.logger.addHandler(fh)
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            existing_file_handler = any(
+                isinstance(handler, logging.FileHandler) and
+                Path(getattr(handler, "baseFilename", "")).resolve() == log_path.resolve()
+                for handler in self.logger.handlers
+            )
+            if not existing_file_handler:
+                fh = logging.FileHandler(log_file)
+                fh.setLevel(logging.DEBUG)
+                fh.setFormatter(formatter)
+                self.logger.addHandler(fh)
     
     def get_logger(self):
         return self.logger
@@ -62,7 +71,15 @@ class ConfigLoader:
     """Load and manage configuration"""
     
     def __init__(self, config_dir: str = "config"):
-        self.config_dir = Path(config_dir)
+        requested_dir = Path(config_dir)
+        if requested_dir.exists():
+            self.config_dir = requested_dir
+        elif requested_dir.name == "config" and Path("cofigs").exists():
+            self.config_dir = Path("cofigs")
+        elif requested_dir.name == "cofigs" and Path("config").exists():
+            self.config_dir = Path("config")
+        else:
+            self.config_dir = requested_dir
         self.settings = {}
         self.rules = {}
         self.load_all()
@@ -151,14 +168,6 @@ class SystemInfo:
         Returns:
             Command output
         """
-        # Sanitize command if sanitizer is available
-        original_command = command
-        if SANITIZER_AVAILABLE and InputSanitizer:
-            command = InputSanitizer.sanitize_powershell(command)
-            if not command:
-                # Log but don't expose the original command
-                return "Error: Command sanitization failed"
-        
         try:
             result = subprocess.run(
                 ["powershell", "-Command", command],
@@ -184,12 +193,6 @@ class SystemInfo:
         Returns:
             Command output
         """
-        # Sanitize command if sanitizer is available
-        if SANITIZER_AVAILABLE and InputSanitizer:
-            command = InputSanitizer.sanitize_command(command)
-            if not command:
-                return "Error: Command sanitization failed"
-        
         try:
             result = subprocess.run(
                 command,
