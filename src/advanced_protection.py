@@ -434,7 +434,8 @@ class MalwareScanner:
             "file": file_path,
             "malicious": False,
             "detections": [],
-            "hash": None
+            "hash": None,
+            "quarantined": False
         }
         
         # Validate file path
@@ -485,7 +486,7 @@ class MalwareScanner:
             self.logger.warning(f"🚨 Malware detected: {file_path}")
             # Auto-quarantine if configured
             if self.auto_quarantine:
-                self.quarantine_manager.quarantine(file_path)
+                results["quarantined"] = self.quarantine_manager.quarantine(file_path)
             
         return results
     

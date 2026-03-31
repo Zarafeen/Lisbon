@@ -55,7 +55,7 @@ class SecurityAgent:
         
         if ADVANCED_AVAILABLE:
             try:
-                self.malware_scanner = MalwareScanner()
+                self.malware_scanner = MalwareScanner(self.config_loader)
                 self.network_monitor = NetworkMonitor()
                 self.vuln_scanner = VulnerabilityScanner()
                 self.behavior_analyzer = BehavioralAnalyzer()
