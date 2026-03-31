@@ -165,3 +165,92 @@ Examples:
 
 if __name__ == "__main__":
     main()
+
+# Add these imports at the top
+from src.advanced_protection import (
+    RealTimeProtection,
+    MalwareScanner,
+    NetworkMonitor,
+    VulnerabilityScanner,
+    BehavioralAnalyzer
+)
+
+# Add to SecurityAgent class __init__:
+def __init__(self, config_dir: str = "config"):
+    # ... existing code ...
+    
+    # Initialize advanced protection modules
+    self.rtp = None
+    self.malware_scanner = MalwareScanner()
+    self.network_monitor = NetworkMonitor()
+    self.vuln_scanner = VulnerabilityScanner()
+    self.behavior_analyzer = BehavioralAnalyzer()
+    
+# Add new methods to SecurityAgent class:
+
+def start_real_time_protection(self):
+    """Start real-time protection"""
+    self.rtp = RealTimeProtection(self.config_loader)
+    self.rtp.start_monitoring()
+    print_progress("Real-Time Protection Active", "success")
+    
+def stop_real_time_protection(self):
+    """Stop real-time protection"""
+    if self.rtp:
+        self.rtp.stop_monitoring()
+        print_progress("Real-Time Protection Stopped", "info")
+
+def scan_for_malware(self, path=None):
+    """Scan for malware"""
+    if not path:
+        path = os.environ.get('USERPROFILE', 'C:\\')
+    
+    print_progress(f"Scanning for malware: {path}", "info")
+    threats = self.malware_scanner.scan_directory(path)
+    
+    if threats:
+        print_progress(f"Found {len(threats)} threats!", "error")
+        for threat in threats:
+            print(f"  🚨 {threat['file']}")
+            for detection in threat['detections']:
+                print(f"     → {detection}")
+    else:
+        print_progress("No malware found", "success")
+        
+    return threats
+
+def scan_vulnerabilities(self):
+    """Scan for software vulnerabilities"""
+    print_progress("Scanning for vulnerabilities...", "info")
+    vulns = self.vuln_scanner.scan_software()
+    
+    if vulns:
+        print_progress(f"Found {len(vulns)} vulnerable applications", "warning")
+        for vuln in vulns:
+            print(f"  ⚠️ {vuln['software']} {vuln['version']}")
+            for cve in vuln['vulnerabilities']:
+                print(f"     → {cve}")
+    else:
+        print_progress("No vulnerabilities found", "success")
+        
+    return vulns
+
+def analyze_behavior(self):
+    """Analyze system behavior for anomalies"""
+    print_progress("Analyzing system behavior...", "info")
+    anomalies = self.behavior_analyzer.detect_anomalies()
+    
+    if anomalies:
+        print_progress(f"Found {len(anomalies)} anomalous processes", "warning")
+        for anomaly in anomalies:
+            print(f"  ⚠️ {anomaly['name']} (CPU: {anomaly['cpu']}%, Memory: {anomaly['memory']}%)")
+    else:
+        print_progress("No behavioral anomalies detected", "success")
+        
+    return anomalies
+
+def start_network_monitoring(self):
+    """Start network traffic monitoring"""
+    print_progress("Starting network monitoring...", "info")
+    self.network_monitor.start_capture()
+    print_progress("Network monitoring active", "success")
