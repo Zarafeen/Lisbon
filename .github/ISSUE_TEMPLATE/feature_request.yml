@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement for Lisbon
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk or side effects
+      description: Does this affect security, file deletion, quarantine, or system settings?

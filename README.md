@@ -5,27 +5,36 @@
 
 # Lisbon
 
-Lisbon is a Windows-focused security auditing and remediation tool. It audits common local security issues, applies selected fixes, generates reports, and offers optional monitoring and advanced protection modules.
+Lisbon is a Windows-focused security auditing and remediation tool. It audits common local security issues, applies selected fixes, generates reports, and includes optional monitoring and advanced protection modules.
 
-## Features
+## Overview
 
-- Configurable security audit checks
-- Automatic remediation for supported findings
-- Report generation in `txt`, `json`, and `html`
-- Continuous monitoring loop
-- Optional advanced modules for:
-  - real-time file and process monitoring
-  - malware scanning
-  - network monitoring
-  - software vulnerability checks
-  - behavioral anomaly detection
+Lisbon is designed as a local, scriptable security assistant for a personal Windows machine. It combines:
 
-## Scope
+- security auditing
+- automated fixes for supported findings
+- report generation
+- continuous monitoring
+- optional advanced protection features such as malware scanning, behavioral analysis, and network monitoring
 
-- Primary target: Windows 10/11
-- Python 3.8+
-- Administrator privileges recommended for most fix operations
-- Best treated as a personal/local beta tool until it has stronger test coverage
+## Current Capabilities
+
+- Audit configurable Windows security checks
+- Apply automatic remediation for supported issues
+- Generate reports in `txt`, `json`, or `html`
+- Run a continuous monitoring loop
+- Start real-time protection for file and process monitoring
+- Scan directories for suspicious files using YARA and hash checks
+- Analyze running processes for behavioral anomalies
+- Check installed software for simple vulnerability/version issues
+
+## Important Safety Notes
+
+- Lisbon is still a beta tool and should be used carefully on a real machine.
+- Malware scanning is heuristic-based and can produce false positives.
+- Auto-quarantine is intentionally conservative and is meant for stronger detections only.
+- Trusted Microsoft application folders are excluded by default from malware scanning to reduce noise.
+- Do not treat every detection as confirmed malware without review.
 
 ## Quick Start
 
@@ -36,15 +45,16 @@ pip install -r requirements.txt
 python src/agent.py --audit --report
 ```
 
-Windows PowerShell:
+Windows PowerShell examples:
 
 ```powershell
 python src/agent.py --audit --report
 python src/agent.py --fix
 python src/agent.py --monitor
+python scripts/run_agent.py
 ```
 
-## CLI Usage
+## CLI Commands
 
 ```bash
 python src/agent.py --audit
@@ -58,7 +68,7 @@ python src/agent.py --behavior
 python src/agent.py --network-monitor
 ```
 
-Quick launcher:
+Interactive launcher:
 
 ```bash
 python scripts/run_agent.py
@@ -66,79 +76,104 @@ python scripts/run_agent.py
 
 ## Configuration
 
-The repository currently stores configuration in `cofigs/`.
+This repository currently stores configuration in `cofigs/`.
 
-Key files:
+Main config files:
 
 - `cofigs/settings.yaml`
 - `cofigs/rules.json`
 - `cofigs/malware_rules.yar`
 
-Example:
+### Malware Scanning Settings
+
+The malware scanner supports configurable quarantine behavior and default exclusions.
 
 ```yaml
-agent:
-  auto_fix: true
-
-monitor:
-  interval_seconds: 300
-  alert_on_critical: true
-
-reporting:
-  report_format: "html"
+advanced_protection:
+  malware_scanning:
+    enabled: true
+    auto_quarantine: true
+    quarantine_min_confidence: "high"
+    scan_schedule: "weekly"
+    yara_rules: "config/malware_rules.yar"
+    exclude_paths:
+      - "\\AppData\\Local\\Microsoft\\Edge\\User Data\\"
+      - "\\AppData\\Local\\Microsoft\\Office\\"
+      - "\\AppData\\Local\\Microsoft\\TeamsMeetingAdd-in\\"
 ```
+
+What this means:
+
+- auto-quarantine can be enabled
+- quarantine only happens for stronger detections
+- noisy Microsoft vendor folders are skipped by default
+
+## Recommended Scan Targets
+
+Safer first-scan locations:
+
+- `C:\Users\USER\Downloads`
+- `C:\Users\USER\AppData\Local\Temp`
+- specific unknown browser extension directories
+
+Avoid broad full-profile scans until you have reviewed your rules and exclusions.
 
 ## Project Structure
 
 ```text
 Lisbon/
-├── README.md
-├── requirements.txt
-├── setup.py
-├── LICENSE
-├── cofigs/
-│   ├── settings.yaml
-│   ├── rules.json
-│   └── malware_rules.yar
-├── scripts/
-│   └── run_agent.py
-└── src/
-    ├── __init__.py
-    ├── agent.py
-    ├── auditor.py
-    ├── fixer.py
-    ├── reporter.py
-    ├── monitor.py
-    ├── advanced_protection.py
-    ├── sanitizer.py
-    ├── threat_logger.py
-    └── utils.py
+|-- README.md
+|-- requirements.txt
+|-- setup.py
+|-- LICENSE
+|-- cofigs/
+|   |-- settings.yaml
+|   |-- rules.json
+|   `-- malware_rules.yar
+|-- scripts/
+|   `-- run_agent.py
+`-- src/
+    |-- __init__.py
+    |-- agent.py
+    |-- auditor.py
+    |-- fixer.py
+    |-- reporter.py
+    |-- monitor.py
+    |-- advanced_protection.py
+    |-- sanitizer.py
+    |-- threat_logger.py
+    `-- utils.py
 ```
 
 ## Main Modules
 
-- `agent.py`: CLI entrypoint and orchestration
-- `auditor.py`: security checks
-- `fixer.py`: automatic remediation
+- `agent.py`: top-level CLI and orchestration
+- `auditor.py`: audit checks and vulnerability collection
+- `fixer.py`: supported auto-remediation actions
 - `reporter.py`: report generation and retention cleanup
-- `monitor.py`: scheduled monitoring loop
-- `advanced_protection.py`: optional real-time and scanning features
+- `monitor.py`: continuous monitoring loop
+- `advanced_protection.py`: malware scanning, behavioral analysis, and real-time protection
 - `sanitizer.py`: input and path validation helpers
-- `utils.py`: config loading, logging, and system helpers
+- `utils.py`: config loading, logging, shell helpers, and system utilities
 
-## Notes
+## Development Notes
 
-- Some advanced features depend on optional packages such as `yara-python`, `watchdog`, `scapy`, and `scikit-learn`.
-- Real-time monitoring and remediation features can change local system state.
-- The current config directory name is `cofigs/` because that is how the repository is presently structured.
+- The package entrypoint is `src.__init__`.
+- The default config directory is `cofigs/`, matching the current repository layout.
+- Advanced features depend on optional packages such as `yara-python`, `watchdog`, `scapy`, and `scikit-learn`.
+- Network monitoring may show platform-specific warnings if packet capture support is unavailable.
 
-## Development
+## Basic Validation
 
 ```bash
-pip install -r requirements.txt
 python -m py_compile src\__init__.py src\agent.py src\auditor.py src\advanced_protection.py src\utils.py setup.py
 ```
 
 ## License
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## Community
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
