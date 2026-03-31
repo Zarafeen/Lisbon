@@ -237,8 +237,7 @@ For issues or questions, open an issue on GitHub.
 
 Built with 🛡️ for security enthusiasts
 
-```
-
+---
 pyyaml==6.0
 psutil==5.9.5
 colorama==0.4.6
