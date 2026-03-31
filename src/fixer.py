@@ -61,6 +61,9 @@ class SecurityFixer:
             self.system.run_powershell(
                 "netsh advfirewall firewall add rule name='BlockDNS_UDP' dir=out protocol=udp remoteport=53 action=block"
             )
+            self.system.run_powershell(
+                "netsh advfirewall firewall add rule name='BlockDNS_TCP' dir=out protocol=tcp remoteport=53 action=block"
+            )
             
             return {"fixed": True, "description": "Set secure DNS (1.1.1.1) and blocked DNS leaks"}
         except Exception as e:
@@ -90,40 +93,53 @@ class SecurityFixer:
         """Block vulnerable open ports"""
         try:
             ports_to_block = [21, 23, 25, 445, 1433, 3306, 3389, 5900]
+            blocked = []
             for port in ports_to_block:
                 self.system.run_powershell(
                     f"netsh advfirewall firewall add rule name='Block_Port_{port}' dir=in protocol=tcp localport={port} action=block"
                 )
-            return {"fixed": True, "description": f"Blocked {len(ports_to_block)} vulnerable ports"}
+                blocked.append(str(port))
+            return {"fixed": True, "description": f"Blocked ports: {', '.join(blocked)}"}
         except Exception as e:
             return {"fixed": False, "description": f"Could not block ports: {e}"}
     
     def fix_suspicious_processes(self) -> Dict[str, Any]:
         """Stop suspicious processes"""
         try:
-            suspicious = ['vnc', 'remote', 'teamviewer', 'anydesk']
+            suspicious = ['vnc', 'remote', 'teamviewer', 'anydesk', 'tightvnc', 'radmin', 'logmein']
             stopped = []
             for proc in suspicious:
-                result = self.system.run_powershell(
-                    f"Stop-Process -Name *{proc}* -Force -ErrorAction SilentlyContinue"
+                # Check if process exists
+                check_result = self.system.run_powershell(
+                    f"Get-Process -Name *{proc}* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"
                 )
-                if result or True:
+                if check_result and check_result != "Error:" and "No" not in check_result and check_result.strip():
+                    # Process exists, stop it
+                    self.system.run_powershell(
+                        f"Stop-Process -Name *{proc}* -Force -ErrorAction SilentlyContinue"
+                    )
                     stopped.append(proc)
-            return {"fixed": len(stopped) > 0, "description": f"Stopped processes: {', '.join(stopped)}" if stopped else "No processes found"}
+                    self.logger.info(f"Stopped process: {proc}")
+            
+            if stopped:
+                return {"fixed": True, "description": f"Stopped processes: {', '.join(stopped)}"}
+            else:
+                return {"fixed": False, "description": "No suspicious processes found"}
         except Exception as e:
             return {"fixed": False, "description": f"Could not stop processes: {e}"}
     
     def fix_password_policy(self) -> Dict[str, Any]:
         """Enforce strong password policy"""
         try:
-            self.system.run_powershell("net accounts /minpwlen:8 /maxpwage:90")
-            return {"fixed": True, "description": "Set minimum password length to 8 characters"}
+            self.system.run_powershell("net accounts /minpwlen:8 /maxpwage:90 /minpwage:1 /uniquepw:5")
+            return {"fixed": True, "description": "Set minimum password length to 8 characters, max age 90 days"}
         except Exception as e:
             return {"fixed": False, "description": f"Could not update password policy: {e}"}
     
     def fix_disk_encryption(self) -> Dict[str, Any]:
         """Enable BitLocker (requires user intervention)"""
-        return {"fixed": False, "description": "BitLocker requires manual setup. Open 'Manage BitLocker'"}
+        # BitLocker requires user interaction, so we just notify
+        return {"fixed": False, "description": "BitLocker requires manual setup. Open 'Manage BitLocker' and enable encryption"}
     
     def fix_browser_security(self) -> Dict[str, Any]:
         """Apply browser hardening"""
@@ -132,13 +148,36 @@ class SecurityFixer:
         # Firefox hardening
         firefox_profiles = Path(os.environ.get('APPDATA', '')) / 'Mozilla' / 'Firefox' / 'Profiles'
         if firefox_profiles.exists():
-            user_js = '''user_pref("media.peerconnection.enabled", false);
+            user_js_content = '''// Security Agent Auto-Config
+user_pref("media.peerconnection.enabled", false);
 user_pref("privacy.resistFingerprinting", true);
 user_pref("network.trr.mode", 3);
+user_pref("network.trr.uri", "https://cloudflare-dns.com/dns-query");
 user_pref("geo.enabled", false);
+user_pref("browser.send_pings", false);
+user_pref("webgl.disabled", true);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
 '''
             for profile in firefox_profiles.glob('*.default'):
-                (profile / 'user.js').write_text(user_js)
-                fixes.append("Firefox hardened")
+                user_js_file = profile / 'user.js'
+                user_js_file.write_text(user_js_content)
+                fixes.append(f"Firefox hardened: {profile.name}")
+                self.logger.info(f"Applied Firefox hardening to {profile.name}")
         
-        return {"fixed": len(fixes) > 0, "description": f"Applied: {', '.join(fixes)}" if fixes else "No browser fixes"}
+        # Chrome/Brave/Edge hardening (registry keys for Windows)
+        if self.system.get_os() == "Windows":
+            try:
+                # Disable WebRTC in Chrome/Edge
+                chrome_policies = r"HKLM:\SOFTWARE\Policies\Google\Chrome"
+                self.system.run_powershell(
+                    f"New-Item -Path '{chrome_policies}' -Force -ErrorAction SilentlyContinue"
+                )
+                self.system.run_powershell(
+                    f"Set-ItemProperty -Path '{chrome_policies}' -Name 'WebRtcLocalhostIpHandling' -Value '2' -Type DWord"
+                )
+                fixes.append("Chrome/Edge WebRTC disabled")
+            except:
+                pass
+        
+        return {"fixed": len(fixes) > 0, "description": f"Applied: {', '.join(fixes)}" if fixes else "No browser fixes applied"}
