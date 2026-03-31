@@ -8,7 +8,7 @@ import time
 import threading
 import hashlib
 import json
-import pickle
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -56,6 +56,54 @@ except ImportError:
 from src.utils import SystemInfo, Logger
 
 
+class QuarantineManager:
+    """Manage quarantined files"""
+    
+    def __init__(self):
+        self.quarantine_dir = Path("quarantine")
+        self.quarantine_dir.mkdir(exist_ok=True)
+        self.quarantine_log = self.quarantine_dir / "quarantine_log.json"
+        
+    def quarantine(self, file_path: str) -> bool:
+        """Move file to quarantine"""
+        try:
+            file_name = Path(file_path).name
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            quarantined_path = self.quarantine_dir / f"{timestamp}_{file_name}"
+            
+            # Move file
+            os.rename(file_path, quarantined_path)
+            
+            # Calculate file hash for tracking
+            with open(quarantined_path, 'rb') as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            # Log quarantine
+            log_entry = {
+                "original_path": file_path,
+                "quarantined_path": str(quarantined_path),
+                "timestamp": datetime.now().isoformat(),
+                "hash": file_hash
+            }
+            
+            # Update log
+            if self.quarantine_log.exists():
+                with open(self.quarantine_log, 'r') as f:
+                    logs = json.load(f)
+            else:
+                logs = []
+            
+            logs.append(log_entry)
+            
+            with open(self.quarantine_log, 'w') as f:
+                json.dump(logs, f, indent=2)
+                
+            return True
+            
+        except Exception as e:
+            return False
+
+
 class RealTimeProtection:
     """Real-time file system and process monitoring"""
     
@@ -67,6 +115,7 @@ class RealTimeProtection:
         self.suspicious_events = []
         self.file_activity = {}
         self.running = True
+        self.quarantine_manager = QuarantineManager()
         
         # Critical directories to monitor
         user_profile = os.environ.get('USERPROFILE', '')
@@ -85,6 +134,9 @@ class RealTimeProtection:
             '.ezz', '.micro', '.wallet', '.locky', '.crypto',
             '.enc', '.lock', '.ransomware'
         ]
+        
+        # Get auto-quarantine setting from config
+        self.auto_quarantine = config.get('advanced_protection.malware_scanning.auto_quarantine', False)
         
     def start_monitoring(self):
         """Start real-time file system monitoring"""
@@ -238,10 +290,21 @@ class FileMonitorHandler(FileSystemEventHandler):
 class MalwareScanner:
     """Advanced malware detection using YARA rules and signatures"""
     
-    def __init__(self):
+    def __init__(self, config=None):
         self.logger = Logger("scanner").get_logger()
+        self.config = config
         self.yara_rules = self._load_yara_rules()
         self.malware_signatures = self._load_signatures()
+        self.quarantine_manager = QuarantineManager()
+        
+        # Extensions to scan (executable files)
+        self.scan_extensions = {
+            '.exe', '.dll', '.sys', '.scr', '.bat', '.cmd', 
+            '.ps1', '.vbs', '.js', '.jar', '.py', '.pl', '.rb'
+        }
+        
+        # Auto-quarantine setting
+        self.auto_quarantine = config.get('advanced_protection.malware_scanning.auto_quarantine', False) if config else False
         
     def _load_yara_rules(self):
         """Load YARA rules for malware detection"""
@@ -249,7 +312,17 @@ class MalwareScanner:
             self.logger.warning("YARA not installed - malware detection limited")
             return None
             
-        # Create basic YARA rules
+        # Try to load from external file first
+        yara_file = Path("config/malware_rules.yar")
+        if yara_file.exists():
+            try:
+                rules = yara.compile(filepath=str(yara_file))
+                self.logger.info(f"Loaded YARA rules from {yara_file}")
+                return rules
+            except Exception as e:
+                self.logger.warning(f"Could not load external rules: {e}")
+        
+        # Fallback to built-in rules
         basic_rules = """
         rule Suspicious_PE_Characteristics {
             strings:
@@ -284,35 +357,28 @@ class MalwareScanner:
         
         try:
             rules = yara.compile(source=basic_rules)
-            self.logger.info("YARA rules loaded successfully")
+            self.logger.info("Using built-in YARA rules")
             return rules
         except Exception as e:
             self.logger.warning(f"Could not compile YARA rules: {e}")
             return None
     
     def _load_signatures(self):
-        """Load malware signatures from online sources"""
-        signatures = set()  # Use set for faster lookup
+        """Load malware signatures from local file"""
+        signatures = set()
         
         try:
-            # Try to load from local file first
+            # Try to load from local file
             sig_file = Path("config/malware_hashes.txt")
             if sig_file.exists():
                 with open(sig_file, 'r') as f:
                     for line in f:
-                        signatures.add(line.strip().lower())
+                        line = line.strip().lower()
+                        if line and not line.startswith('#'):
+                            signatures.add(line)
                 self.logger.info(f"Loaded {len(signatures)} signatures from local file")
-        except:
-            pass
-            
-        # Optionally load from online (commented out to avoid delays)
-        # try:
-        #     response = requests.get("https://raw.githubusercontent.com/...", timeout=5)
-        #     if response.status_code == 200:
-        #         for line in response.text.split('\n'):
-        #             signatures.add(line.strip().lower())
-        # except:
-        #     pass
+        except Exception as e:
+            self.logger.debug(f"Could not load signatures: {e}")
             
         return signatures
     
@@ -331,7 +397,12 @@ class MalwareScanner:
                 return results
                 
             # Skip very large files
-            if os.path.getsize(file_path) > 100 * 1024 * 1024:  # > 100MB
+            size = os.path.getsize(file_path)
+            if size > 100 * 1024 * 1024:  # > 100MB
+                return results
+                
+            # Skip empty files
+            if size == 0:
                 return results
                 
             # Calculate file hash
@@ -346,25 +417,31 @@ class MalwareScanner:
                     results["detections"].append("Known malware hash")
                 
                 # Scan with YARA
-                if self.yara_rules:
+                if self.yara_rules and not results["malicious"]:
                     matches = self.yara_rules.match(data=file_data)
                     if matches:
                         results["malicious"] = True
                         for match in matches:
                             results["detections"].append(f"YARA rule: {match.rule}")
                             
+        except PermissionError:
+            self.logger.debug(f"Permission denied: {file_path}")
         except Exception as e:
-            self.logger.error(f"Error scanning {file_path}: {e}")
+            self.logger.debug(f"Error scanning {file_path}: {e}")
             
         if results["malicious"]:
             self.logger.warning(f"🚨 Malware detected: {file_path}")
+            # Auto-quarantine if configured
+            if self.auto_quarantine:
+                self.quarantine_manager.quarantine(file_path)
             
         return results
     
-    def scan_directory(self, directory: str) -> List[Dict[str, Any]]:
-        """Scan entire directory for malware"""
+    def scan_directory(self, directory: str, show_progress: bool = True) -> List[Dict[str, Any]]:
+        """Scan entire directory for malware with progress tracking"""
         self.logger.info(f"Scanning directory: {directory}")
         threats = []
+        scanned = 0
         
         if not os.path.exists(directory):
             self.logger.error(f"Directory does not exist: {directory}")
@@ -372,20 +449,35 @@ class MalwareScanner:
             
         for root, dirs, files in os.walk(directory):
             # Skip system directories
-            if 'Windows' in root or 'System32' in root:
+            skip_dirs = ['Windows', 'System32', 'WinSxS', 'AppData\\Local\\Temp', '$Recycle.Bin']
+            if any(skip in root for skip in skip_dirs):
                 continue
                 
+            # Skip hidden directories
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            
             for file in files:
                 file_path = os.path.join(root, file)
+                ext = os.path.splitext(file)[1].lower()
+                
+                # Only scan relevant file types
+                if ext not in self.scan_extensions:
+                    continue
+                    
                 try:
-                    if os.path.getsize(file_path) < 100 * 1024 * 1024:  # < 100MB
+                    if os.path.getsize(file_path) < 100 * 1024 * 1024:
                         result = self.scan_file(file_path)
+                        scanned += 1
+                        
+                        if show_progress and scanned % 100 == 0:
+                            self.logger.info(f"Scanned {scanned} files, found {len(threats)} threats...")
+                            
                         if result["malicious"]:
                             threats.append(result)
                 except:
                     pass
                         
-        self.logger.info(f"Scan complete. Found {len(threats)} threats")
+        self.logger.info(f"Scan complete. Scanned {scanned} files, found {len(threats)} threats")
         return threats
 
 
@@ -427,7 +519,7 @@ class NetworkMonitor:
         # Start capture in background thread
         self.capture_thread = threading.Thread(
             target=scapy.sniff,
-            kwargs={'prn': packet_handler, 'store': False, 'timeout': 1},
+            kwargs={'prn': packet_handler, 'store': False},
             daemon=True
         )
         self.capture_thread.start()
@@ -487,7 +579,7 @@ class VulnerabilityScanner:
         try:
             import winreg
         except ImportError:
-            self.logger.warning("winreg not available")
+            self.logger.warning("winreg module not available (Windows only)")
             return vulnerabilities
             
         keys = [
@@ -510,8 +602,8 @@ class VulnerabilityScanner:
                             name = winreg.QueryValueEx(subkey, "DisplayName")[0]
                             version = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
                             
-                            # Skip duplicates
-                            if name in scanned_software:
+                            # Skip duplicates and empty names
+                            if not name or name in scanned_software:
                                 i += 1
                                 continue
                             scanned_software.add(name)
@@ -546,6 +638,11 @@ class VulnerabilityScanner:
             "adobe": (24, 0),        # Adobe 24+
             "python": (3, 9),        # Python 3.9+
             "node": (18, 0),         # Node.js 18+
+            "edge": (120, 0),        # Microsoft Edge 120+
+            "opera": (100, 0),       # Opera 100+
+            "7-zip": (23, 0),        # 7-Zip 23+
+            "vlc": (3, 0),           # VLC 3.0+
+            "notepad++": (8, 5),     # Notepad++ 8.5+
         }
         
         vulns = []
@@ -555,16 +652,15 @@ class VulnerabilityScanner:
             if risky in software_lower:
                 try:
                     # Parse version number
-                    import re
                     version_match = re.search(r'(\d+)\.(\d+)', version)
                     if version_match:
                         ver_major = int(version_match.group(1))
                         ver_minor = int(version_match.group(2))
                         
                         if ver_major < major or (ver_major == major and ver_minor < minor):
-                            vulns.append(f"CVE - Outdated {risky} ({version} < {major}.{minor})")
+                            vulns.append(f"CVE - Outdated {risky.title()} ({version} < {major}.{minor})")
                 except:
-                    vulns.append(f"CVE - Possibly outdated {risky} ({version})")
+                    vulns.append(f"CVE - Possibly outdated {risky.title()} ({version})")
                     
         return vulns
 
