@@ -11,19 +11,39 @@ import json
 import pickle
 from pathlib import Path
 from datetime import datetime
+from typing import List, Dict, Any, Optional
 import psutil
-import yara
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-import netifaces
 import requests
-from cryptography.fernet import Fernet
+
+# Optional imports with fallbacks
+try:
+    import yara
+    YARA_AVAILABLE = True
+except ImportError:
+    YARA_AVAILABLE = False
+    yara = None
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    Observer = None
+    FileSystemEventHandler = object
+
+try:
+    import netifaces
+    NETIFACES_AVAILABLE = True
+except ImportError:
+    NETIFACES_AVAILABLE = False
 
 try:
     import scapy.all as scapy
     SCAPY_AVAILABLE = True
 except ImportError:
     SCAPY_AVAILABLE = False
+    scapy = None
 
 try:
     import sklearn
@@ -31,6 +51,7 @@ try:
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
+    IsolationForest = None
 
 from src.utils import SystemInfo, Logger
 
@@ -45,24 +66,32 @@ class RealTimeProtection:
         self.observer = None
         self.suspicious_events = []
         self.file_activity = {}
+        self.running = True
         
         # Critical directories to monitor
+        user_profile = os.environ.get('USERPROFILE', '')
         self.critical_dirs = [
-            Path(os.environ.get('USERPROFILE', '')) / 'Desktop',
-            Path(os.environ.get('USERPROFILE', '')) / 'Documents',
-            Path(os.environ.get('USERPROFILE', '')) / 'Downloads',
-            Path(os.environ.get('USERPROFILE', '')) / 'Pictures',
-            Path(os.environ.get('APPDATA', '')),
+            Path(user_profile) / 'Desktop' if user_profile else None,
+            Path(user_profile) / 'Documents' if user_profile else None,
+            Path(user_profile) / 'Downloads' if user_profile else None,
+            Path(user_profile) / 'Pictures' if user_profile else None,
+            Path(os.environ.get('APPDATA', '')) if os.environ.get('APPDATA') else None,
         ]
+        self.critical_dirs = [d for d in self.critical_dirs if d and d.exists()]
         
         # Known ransomware extensions
         self.ransomware_extensions = [
             '.encrypted', '.locked', '.crypt', '.ransom',
-            '.ezz', '.micro', '.wallet', '.locky'
+            '.ezz', '.micro', '.wallet', '.locky', '.crypto',
+            '.enc', '.lock', '.ransomware'
         ]
         
     def start_monitoring(self):
         """Start real-time file system monitoring"""
+        if not WATCHDOG_AVAILABLE:
+            self.logger.warning("Watchdog not installed - file monitoring disabled")
+            return
+            
         self.logger.info("Starting Real-Time Protection...")
         
         # Start file system monitor
@@ -70,21 +99,25 @@ class RealTimeProtection:
         self.observer = Observer()
         
         for directory in self.critical_dirs:
-            if directory.exists():
+            if directory and directory.exists():
                 self.observer.schedule(event_handler, str(directory), recursive=True)
                 self.logger.info(f"Monitoring: {directory}")
         
-        self.observer.start()
+        if self.critical_dirs:
+            self.observer.start()
+            self.logger.info("File system monitoring active")
+        else:
+            self.logger.warning("No directories to monitor")
         
         # Start process monitor thread
-        process_thread = threading.Thread(target=self._monitor_processes)
-        process_thread.daemon = True
+        process_thread = threading.Thread(target=self._monitor_processes, daemon=True)
         process_thread.start()
-        
+        self.logger.info("Process monitoring active")
         self.logger.info("Real-Time Protection Active")
         
     def stop_monitoring(self):
         """Stop real-time monitoring"""
+        self.running = False
         if self.observer:
             self.observer.stop()
             self.observer.join()
@@ -94,10 +127,11 @@ class RealTimeProtection:
         """Monitor running processes for malicious activity"""
         known_malicious = [
             'ransomware', 'crypt', 'encrypt', 'locker',
-            'wannacry', 'notpetya', 'badrabbit'
+            'wannacry', 'notpetya', 'badrabbit', 'mimikatz',
+            'powershell -enc', 'powershell -e'
         ]
         
-        while True:
+        while self.running:
             try:
                 for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                     try:
@@ -109,7 +143,11 @@ class RealTimeProtection:
                             if malicious in proc_name or malicious in cmdline:
                                 self.logger.warning(f"⚠️ Suspicious process detected: {proc_name}")
                                 self._alert_threat(f"Suspicious process: {proc_name}", proc)
-                                proc.kill()
+                                try:
+                                    proc.kill()
+                                    self.logger.info(f"Killed suspicious process: {proc_name}")
+                                except:
+                                    pass
                                 
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
@@ -129,15 +167,19 @@ class RealTimeProtection:
         self.logger.error(f"🚨 THREAT DETECTED: {message}")
         
         # Save to threat log
-        with open("threat_log.json", "a") as f:
-            json.dump(alert, f)
-            f.write("\n")
+        try:
+            with open("threat_log.json", "a") as f:
+                json.dump(alert, f)
+                f.write("\n")
+        except:
+            pass
 
 
 class FileMonitorHandler(FileSystemEventHandler):
     """Handle file system events for ransomware detection"""
     
     def __init__(self, rtp):
+        super().__init__()
         self.rtp = rtp
         self.file_count = {}
         self.last_alert_time = {}
@@ -186,9 +228,11 @@ class FileMonitorHandler(FileSystemEventHandler):
             self.rtp._alert_threat(f"Malicious file detected: {file_path}")
             # Try to quarantine
             try:
-                os.rename(file_path, file_path + ".quarantined")
-            except:
-                pass
+                quarantined_path = file_path + ".quarantined"
+                os.rename(file_path, quarantined_path)
+                self.rtp.logger.info(f"Quarantined: {file_path}")
+            except Exception as e:
+                self.rtp.logger.error(f"Could not quarantine: {e}")
 
 
 class MalwareScanner:
@@ -201,8 +245,10 @@ class MalwareScanner:
         
     def _load_yara_rules(self):
         """Load YARA rules for malware detection"""
-        rules = {}
-        
+        if not YARA_AVAILABLE:
+            self.logger.warning("YARA not installed - malware detection limited")
+            return None
+            
         # Create basic YARA rules
         basic_rules = """
         rule Suspicious_PE_Characteristics {
@@ -219,14 +265,18 @@ class MalwareScanner:
                 $ps1 = "-enc" ascii
                 $ps2 = "-EncodedCommand" ascii
                 $ps3 = "-e" ascii
+                $ps4 = "IEX" ascii
+                $ps5 = "Invoke-Expression" ascii
             condition:
-                ($ps1 or $ps2 or $ps3) and filesize < 10KB
+                ($ps1 or $ps2 or $ps3) and ($ps4 or $ps5) and filesize < 50KB
         }
         
-        rule Malware_Indicator_Hashes {
+        rule Malware_Indicator_Strings {
             strings:
-                $hash1 = {6C 6F 63 6B 79}  // "locky"
-                $hash2 = {77 61 6E 6E 61 63 72 79}  // "wannacry"
+                $locky = "locky" nocase
+                $wannacry = "wannacry" nocase
+                $ransom = "ransom" nocase
+                $encrypt = "encrypt" nocase
             condition:
                 any of them
         }
@@ -234,33 +284,39 @@ class MalwareScanner:
         
         try:
             rules = yara.compile(source=basic_rules)
+            self.logger.info("YARA rules loaded successfully")
+            return rules
         except Exception as e:
             self.logger.warning(f"Could not compile YARA rules: {e}")
-            
-        return rules
+            return None
     
     def _load_signatures(self):
         """Load malware signatures from online sources"""
-        signatures = []
+        signatures = set()  # Use set for faster lookup
         
         try:
-            # Load from MalwareBazaar (example)
-            response = requests.get(
-                "https://mb-api.abuse.ch/api/v1/",
-                timeout=5
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if 'data' in data:
-                    for entry in data['data'][:100]:  # First 100 signatures
-                        if 'sha256_hash' in entry:
-                            signatures.append(entry['sha256_hash'])
+            # Try to load from local file first
+            sig_file = Path("config/malware_hashes.txt")
+            if sig_file.exists():
+                with open(sig_file, 'r') as f:
+                    for line in f:
+                        signatures.add(line.strip().lower())
+                self.logger.info(f"Loaded {len(signatures)} signatures from local file")
         except:
-            self.logger.warning("Could not load online signatures")
+            pass
+            
+        # Optionally load from online (commented out to avoid delays)
+        # try:
+        #     response = requests.get("https://raw.githubusercontent.com/...", timeout=5)
+        #     if response.status_code == 200:
+        #         for line in response.text.split('\n'):
+        #             signatures.add(line.strip().lower())
+        # except:
+        #     pass
             
         return signatures
     
-    def scan_file(self, file_path):
+    def scan_file(self, file_path: str) -> Dict[str, Any]:
         """Scan a single file for malware"""
         results = {
             "file": file_path,
@@ -270,6 +326,14 @@ class MalwareScanner:
         }
         
         try:
+            # Check if file exists and is readable
+            if not os.path.exists(file_path) or not os.access(file_path, os.R_OK):
+                return results
+                
+            # Skip very large files
+            if os.path.getsize(file_path) > 100 * 1024 * 1024:  # > 100MB
+                return results
+                
             # Calculate file hash
             with open(file_path, 'rb') as f:
                 file_data = f.read()
@@ -297,19 +361,31 @@ class MalwareScanner:
             
         return results
     
-    def scan_directory(self, directory):
+    def scan_directory(self, directory: str) -> List[Dict[str, Any]]:
         """Scan entire directory for malware"""
         self.logger.info(f"Scanning directory: {directory}")
         threats = []
         
+        if not os.path.exists(directory):
+            self.logger.error(f"Directory does not exist: {directory}")
+            return threats
+            
         for root, dirs, files in os.walk(directory):
+            # Skip system directories
+            if 'Windows' in root or 'System32' in root:
+                continue
+                
             for file in files:
                 file_path = os.path.join(root, file)
-                if os.path.getsize(file_path) < 100 * 1024 * 1024:  # < 100MB
-                    result = self.scan_file(file_path)
-                    if result["malicious"]:
-                        threats.append(result)
+                try:
+                    if os.path.getsize(file_path) < 100 * 1024 * 1024:  # < 100MB
+                        result = self.scan_file(file_path)
+                        if result["malicious"]:
+                            threats.append(result)
+                except:
+                    pass
                         
+        self.logger.info(f"Scan complete. Found {len(threats)} threats")
         return threats
 
 
@@ -320,6 +396,8 @@ class NetworkMonitor:
         self.logger = Logger("network").get_logger()
         self.packet_count = 0
         self.suspicious_ips = set()
+        self.running = True
+        self.capture_thread = None
         
     def start_capture(self):
         """Start network packet capture"""
@@ -331,6 +409,8 @@ class NetworkMonitor:
         
         def packet_handler(packet):
             self.packet_count += 1
+            if self.packet_count % 1000 == 0:
+                self.logger.debug(f"Packets captured: {self.packet_count}")
             
             # Check for ARP spoofing
             if packet.haslayer(scapy.ARP):
@@ -345,40 +425,47 @@ class NetworkMonitor:
                 self._check_suspicious_ips(packet)
                 
         # Start capture in background thread
-        capture_thread = threading.Thread(
+        self.capture_thread = threading.Thread(
             target=scapy.sniff,
-            kwargs={'prn': packet_handler, 'store': False}
+            kwargs={'prn': packet_handler, 'store': False, 'timeout': 1},
+            daemon=True
         )
-        capture_thread.daemon = True
-        capture_thread.start()
+        self.capture_thread.start()
+        self.logger.info("Network monitoring active")
+        
+    def stop_capture(self):
+        """Stop network capture"""
+        self.running = False
+        self.logger.info("Network monitoring stopped")
         
     def _check_arp_spoofing(self, packet):
         """Detect ARP spoofing attacks"""
         try:
             if packet[scapy.ARP].op == 2:  # ARP reply
-                # Check for conflicting MAC addresses
-                # This is simplified - real implementation would track MAC-IP pairs
+                # Simplified detection - would track MAC-IP pairs in production
                 pass
         except:
             pass
             
     def _check_port_scan(self, packet):
         """Detect port scanning attempts"""
-        # Simplified detection - track connection attempts
+        # Simplified detection
         pass
         
     def _check_suspicious_ips(self, packet):
         """Check for connections to known malicious IPs"""
         suspicious_networks = [
-            "185.130.5",  # Example malicious network
-            "94.102.49",
+            "185.130.5",   # Example malicious network
+            "94.102.49",   # Example malicious network
+            "45.33.32",    # Example malicious network
         ]
         
         ip = packet[scapy.IP].dst
         for network in suspicious_networks:
             if ip.startswith(network):
-                self.suspicious_ips.add(ip)
-                self.logger.warning(f"⚠️ Connection to suspicious IP: {ip}")
+                if ip not in self.suspicious_ips:
+                    self.suspicious_ips.add(ip)
+                    self.logger.warning(f"⚠️ Connection to suspicious IP: {ip}")
 
 
 class VulnerabilityScanner:
@@ -388,69 +475,96 @@ class VulnerabilityScanner:
         self.logger = Logger("vuln").get_logger()
         self.cve_cache = {}
         
-    def scan_software(self):
+    def scan_software(self) -> List[Dict[str, Any]]:
         """Scan installed software for vulnerabilities"""
         self.logger.info("Scanning for vulnerable software...")
         vulnerabilities = []
         
-        if SystemInfo.get_os() == "Windows":
-            # Get installed software via registry
+        if SystemInfo.get_os() != "Windows":
+            self.logger.warning("Vulnerability scanner only supports Windows")
+            return vulnerabilities
+            
+        try:
             import winreg
+        except ImportError:
+            self.logger.warning("winreg not available")
+            return vulnerabilities
             
-            keys = [
-                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-            ]
-            
-            for key_path in keys:
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
-                    i = 0
-                    while True:
+        keys = [
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+        ]
+        
+        scanned_software = set()
+        
+        for key_path in keys:
+            try:
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+                i = 0
+                while True:
+                    try:
+                        subkey_name = winreg.EnumKey(key, i)
+                        subkey = winreg.OpenKey(key, subkey_name)
+                        
                         try:
-                            subkey_name = winreg.EnumKey(key, i)
-                            subkey = winreg.OpenKey(key, subkey_name)
+                            name = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                            version = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
                             
-                            try:
-                                name = winreg.QueryValueEx(subkey, "DisplayName")[0]
-                                version = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
-                                
-                                # Check for vulnerabilities
-                                vulns = self._check_cve(name, version)
-                                if vulns:
-                                    vulnerabilities.append({
-                                        "software": name,
-                                        "version": version,
-                                        "vulnerabilities": vulns
-                                    })
-                            except:
-                                pass
-                                
-                            i += 1
-                        except WindowsError:
-                            break
-                except:
-                    pass
-                    
+                            # Skip duplicates
+                            if name in scanned_software:
+                                i += 1
+                                continue
+                            scanned_software.add(name)
+                            
+                            # Check for vulnerabilities
+                            vulns = self._check_cve(name, version)
+                            if vulns:
+                                vulnerabilities.append({
+                                    "software": name,
+                                    "version": version,
+                                    "vulnerabilities": vulns
+                                })
+                        except:
+                            pass
+                            
+                        i += 1
+                    except WindowsError:
+                        break
+            except Exception as e:
+                self.logger.debug(f"Could not read registry key {key_path}: {e}")
+                
+        self.logger.info(f"Found {len(vulnerabilities)} vulnerable applications")
         return vulnerabilities
     
-    def _check_cve(self, software, version):
+    def _check_cve(self, software: str, version: str) -> List[str]:
         """Check CVE database for known vulnerabilities"""
-        # Simplified - would query NVD API in real implementation
-        high_risk_software = {
-            "chrome": "120",
-            "firefox": "115",
-            "java": "8",
-            "adobe": "24"
+        # Map software to minimum safe versions
+        safe_versions = {
+            "chrome": (120, 0),      # Chrome 120+
+            "firefox": (115, 0),     # Firefox 115+
+            "java": (11, 0),         # Java 11+
+            "adobe": (24, 0),        # Adobe 24+
+            "python": (3, 9),        # Python 3.9+
+            "node": (18, 0),         # Node.js 18+
         }
         
         vulns = []
         software_lower = software.lower()
         
-        for risky, safe_version in high_risk_software.items():
+        for risky, (major, minor) in safe_versions.items():
             if risky in software_lower:
-                if version < safe_version:
-                    vulns.append(f"CVE-2024-XXXX - Outdated {risky} detected")
+                try:
+                    # Parse version number
+                    import re
+                    version_match = re.search(r'(\d+)\.(\d+)', version)
+                    if version_match:
+                        ver_major = int(version_match.group(1))
+                        ver_minor = int(version_match.group(2))
+                        
+                        if ver_major < major or (ver_major == major and ver_minor < minor):
+                            vulns.append(f"CVE - Outdated {risky} ({version} < {major}.{minor})")
+                except:
+                    vulns.append(f"CVE - Possibly outdated {risky} ({version})")
                     
         return vulns
 
@@ -461,52 +575,96 @@ class BehavioralAnalyzer:
     def __init__(self):
         self.logger = Logger("behavior").get_logger()
         self.model = None
+        self.model_trained = False
         self.process_features = []
         
-        if ML_AVAILABLE:
+        if ML_AVAILABLE and IsolationForest:
             self.model = IsolationForest(contamination=0.1, random_state=42)
-            self.logger.info("Behavioral analysis model loaded")
+            self.logger.info("Behavioral analysis model initialized")
         else:
             self.logger.warning("ML libraries not available - behavioral analysis limited")
     
-    def collect_process_features(self):
+    def collect_process_features(self) -> List[Dict[str, Any]]:
         """Collect features for running processes"""
         features = []
         
         for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
             try:
+                # Get CPU and memory info
+                cpu = proc.info['cpu_percent'] or 0
+                memory = proc.info['memory_percent'] or 0
+                
+                # Get thread count
+                try:
+                    threads = proc.num_threads()
+                except:
+                    threads = 0
+                    
+                # Get handle count (Windows)
+                handles = 0
+                if SystemInfo.get_os() == "Windows":
+                    try:
+                        handles = proc.num_handles()
+                    except:
+                        pass
+                
                 features.append({
                     'pid': proc.info['pid'],
-                    'name': proc.info['name'],
-                    'cpu': proc.info['cpu_percent'] or 0,
-                    'memory': proc.info['memory_percent'] or 0,
-                    'threads': proc.num_threads() if hasattr(proc, 'num_threads') else 0
+                    'name': proc.info['name'] or 'unknown',
+                    'cpu': cpu,
+                    'memory': memory,
+                    'threads': threads,
+                    'handles': handles
                 })
-            except:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
                 
         return features
     
-    def detect_anomalies(self):
+    def train_model(self, features: List[Dict[str, Any]]):
+        """Train the anomaly detection model"""
+        if not self.model or len(features) < 10:
+            return
+            
+        # Prepare data for ML
+        data = [[f['cpu'], f['memory'], f['threads'], f.get('handles', 0)] for f in features]
+        
+        try:
+            self.model.fit(data)
+            self.model_trained = True
+            self.logger.info("Behavioral model trained successfully")
+        except Exception as e:
+            self.logger.error(f"Model training failed: {e}")
+    
+    def detect_anomalies(self) -> List[Dict[str, Any]]:
         """Detect anomalous process behavior"""
         features = self.collect_process_features()
         
-        if not features or not self.model:
+        if not features:
+            return []
+            
+        # Train model if not trained and we have enough data
+        if not self.model_trained and len(features) >= 10:
+            self.train_model(features)
+            
+        if not self.model_trained or not self.model:
             return []
             
         # Prepare data for ML
-        data = [[f['cpu'], f['memory'], f['threads']] for f in features]
+        data = [[f['cpu'], f['memory'], f['threads'], f.get('handles', 0)] for f in features]
         
-        if len(data) > 10:
-            self.model.fit(data)
+        try:
             predictions = self.model.predict(data)
             
             anomalies = []
             for i, pred in enumerate(predictions):
                 if pred == -1:  # Anomaly detected
                     anomalies.append(features[i])
-                    self.logger.warning(f"⚠️ Anomalous process detected: {features[i]['name']}")
+                    self.logger.warning(f"⚠️ Anomalous process detected: {features[i]['name']} "
+                                       f"(CPU: {features[i]['cpu']:.1f}%, Memory: {features[i]['memory']:.1f}%)")
                     
             return anomalies
             
-        return []
+        except Exception as e:
+            self.logger.error(f"Anomaly detection failed: {e}")
+            return []
