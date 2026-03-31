@@ -7,7 +7,8 @@ import platform
 import subprocess
 import json
 import yaml
-import requests  # ADDED: Missing import
+import requests
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -19,6 +20,15 @@ try:
     COLOR_SUPPORT = True
 except ImportError:
     COLOR_SUPPORT = False
+
+# Try to import sanitizer
+try:
+    from src.sanitizer import InputSanitizer, SafeCommandExecutor
+    SANITIZER_AVAILABLE = True
+except ImportError:
+    SANITIZER_AVAILABLE = False
+    InputSanitizer = None
+    SafeCommandExecutor = None
 
 
 class Logger:
@@ -95,7 +105,7 @@ class ConfigLoader:
 
 
 class SystemInfo:
-    """System information utilities"""
+    """System information utilities with sanitization"""
     
     @staticmethod
     def get_os() -> str:
@@ -131,7 +141,24 @@ class SystemInfo:
     
     @staticmethod
     def run_powershell(command: str, timeout: int = 30) -> str:
-        """Run PowerShell command and return output"""
+        """
+        Run PowerShell command with sanitization
+        
+        Args:
+            command: PowerShell command to execute
+            timeout: Timeout in seconds
+            
+        Returns:
+            Command output
+        """
+        # Sanitize command if sanitizer is available
+        original_command = command
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            command = InputSanitizer.sanitize_powershell(command)
+            if not command:
+                # Log but don't expose the original command
+                return "Error: Command sanitization failed"
+        
         try:
             result = subprocess.run(
                 ["powershell", "-Command", command],
@@ -147,7 +174,22 @@ class SystemInfo:
     
     @staticmethod
     def run_cmd(command: str, timeout: int = 30) -> str:
-        """Run CMD command and return output"""
+        """
+        Run CMD command with sanitization
+        
+        Args:
+            command: CMD command to execute
+            timeout: Timeout in seconds
+            
+        Returns:
+            Command output
+        """
+        # Sanitize command if sanitizer is available
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            command = InputSanitizer.sanitize_command(command)
+            if not command:
+                return "Error: Command sanitization failed"
+        
         try:
             result = subprocess.run(
                 command,
@@ -163,13 +205,94 @@ class SystemInfo:
             return f"Error: {e}"
     
     @staticmethod
+    def run_powershell_safe(command: str, timeout: int = 30) -> str:
+        """
+        Run PowerShell command with enhanced sanitization (alias for run_powershell)
+        
+        Args:
+            command: PowerShell command to execute
+            timeout: Timeout in seconds
+            
+        Returns:
+            Command output
+        """
+        return SystemInfo.run_powershell(command, timeout)
+    
+    @staticmethod
+    def run_cmd_safe(command: str, timeout: int = 30) -> str:
+        """
+        Run CMD command with enhanced sanitization (alias for run_cmd)
+        
+        Args:
+            command: CMD command to execute
+            timeout: Timeout in seconds
+            
+        Returns:
+            Command output
+        """
+        return SystemInfo.run_cmd(command, timeout)
+    
+    @staticmethod
     def get_ip() -> str:
         """Get public IP address"""
         try:
             response = requests.get('https://api.ipify.org', timeout=5)
-            return response.text.strip()
+            ip = response.text.strip()
+            
+            # Validate IP format
+            if SANITIZER_AVAILABLE and InputSanitizer:
+                valid_ip = InputSanitizer.sanitize_ip(ip)
+                if valid_ip:
+                    return valid_ip
+            
+            # Basic IP validation
+            ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+            if re.match(ip_pattern, ip):
+                return ip
+            return "Unable to determine"
         except:
             return "Unable to determine"
+    
+    @staticmethod
+    def validate_path(base_path: str, user_path: str) -> Optional[str]:
+        """
+        Validate and sanitize a file path
+        
+        Args:
+            base_path: The base directory to restrict to
+            user_path: User-provided path to validate
+            
+        Returns:
+            Sanitized absolute path or None if invalid
+        """
+        if not SANITIZER_AVAILABLE or not InputSanitizer:
+            # Basic validation fallback
+            if '..' in user_path or user_path.startswith('/') or user_path.startswith('\\'):
+                return None
+            return os.path.join(base_path, user_path)
+        
+        return InputSanitizer.sanitize_path(base_path, user_path)
+    
+    @staticmethod
+    def sanitize_process_name(name: str) -> Optional[str]:
+        """
+        Sanitize process name for safe lookup
+        
+        Args:
+            name: Process name to sanitize
+            
+        Returns:
+            Sanitized process name or None
+        """
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            return InputSanitizer.sanitize_process_name(name)
+        
+        # Fallback basic sanitization
+        if not name:
+            return None
+        # Keep only alphanumeric, dot, underscore, hyphen
+        safe_name = re.sub(r'[^a-zA-Z0-9._-]', '', name)
+        return safe_name if safe_name else None
 
 
 def print_banner():
@@ -205,3 +328,36 @@ def print_progress(message: str, status: str = "info"):
         print(f"[{status.upper()}] {message}")
     else:
         print(f"{colors.get(status, colors['info'])}[{status.upper()}]{colors['reset']} {message}")
+
+
+def sanitize_input(text: str, input_type: str = "command") -> str:
+    """
+    Quick helper function to sanitize input
+    
+    Args:
+        text: Input text to sanitize
+        input_type: Type of input ('command', 'ps_command', 'filename', 'process')
+        
+    Returns:
+        Sanitized text
+    """
+    if not text:
+        return ""
+    
+    if not SANITIZER_AVAILABLE or not InputSanitizer:
+        # Fallback basic sanitization
+        dangerous = [';', '&', '|', '`', '$', '(', ')', '<', '>', '\n', '\r']
+        for char in dangerous:
+            text = text.replace(char, '')
+        return text
+    
+    if input_type == "ps_command":
+        return InputSanitizer.sanitize_powershell(text)
+    elif input_type == "filename":
+        result = InputSanitizer.sanitize_filename(text)
+        return result if result else ""
+    elif input_type == "process":
+        result = InputSanitizer.sanitize_process_name(text)
+        return result if result else ""
+    else:  # command
+        return InputSanitizer.sanitize_command(text)
