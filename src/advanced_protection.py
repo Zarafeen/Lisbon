@@ -803,7 +803,7 @@ class BehavioralAnalyzer:
     
     def train_model(self, features: List[Dict[str, Any]]):
         """Train the anomaly detection model"""
-        if not self.model or len(features) < 10:
+        if self.model is None or len(features) < 10:
             return
             
         # Prepare data for ML
