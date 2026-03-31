@@ -1,4 +1,8 @@
 ```markdown
+![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)
+![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
 # 🔒 Security Agent - Autonomous PC Security Tool
 
 An AI-powered security agent that automatically audits and fixes vulnerabilities on your PC. No more manual security checks - let the agent handle it!
@@ -235,12 +239,6 @@ Built with 🛡️ for security enthusiasts
 
 ```
 
----
-
-#### **File 2: requirements.txt**
-```txt
-# Core dependencies
-requests==2.31.0
 pyyaml==6.0
 psutil==5.9.5
 colorama==0.4.6
