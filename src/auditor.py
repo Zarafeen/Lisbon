@@ -1,5 +1,6 @@
 """Security Auditor - Checks for system vulnerabilities"""
 
+import os
 import socket
 import re
 from pathlib import Path
@@ -269,3 +270,4 @@ class SecurityAuditor:
             "severity": "MEDIUM" if not configured else "LOW",
             "fix_available": True,
             "check_name": "browser_security"
+        }
