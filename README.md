@@ -28,3 +28,19 @@ python src/agent.py --fix
 
 # Continuous monitoring
 python src/agent.py --monitor
+
+
+
+### **2. requirements.txt**
+```txt
+requests==2.31.0
+pyyaml==6.0
+psutil==5.9.5
+colorama==0.4.6
+tabulate==0.9.0
+schedule==1.2.0
+flask==2.3.0
+jinja2==3.1.2
+python-dateutil==2.8.2
+wmi==1.5.1
+pywin32==306
