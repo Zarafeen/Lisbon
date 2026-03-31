@@ -218,3 +218,54 @@ class SecurityAuditor:
         }
     
     def check_password_policy(self) -> Dict[str, Any]:
+        """Check password policy"""
+        if self.system.get_os() != "Windows":
+            return {"name": "Password Policy", "vulnerable": False, "details": "Not applicable"}
+        
+        result = self.system.run_powershell("net accounts")
+        
+        match = re.search(r'Minimum password length\s+(\d+)', result)
+        min_length = int(match.group(1)) if match else 0
+        
+        vulnerable = min_length < 8
+        
+        return {
+            "name": "Password Policy",
+            "vulnerable": vulnerable,
+            "details": f"Minimum length: {min_length}",
+            "severity": "MEDIUM" if vulnerable else "LOW",
+            "fix_available": True,
+            "check_name": "password_policy"
+        }
+    
+    def check_disk_encryption(self) -> Dict[str, Any]:
+        """Check disk encryption"""
+        if self.system.get_os() != "Windows":
+            return {"name": "Disk Encryption", "vulnerable": False, "details": "Not applicable"}
+        
+        result = self.system.run_powershell("manage-bde -status C:")
+        
+        vulnerable = "Protection Off" in result or "Percentage Encrypted: 0%" in result
+        
+        return {
+            "name": "Disk Encryption",
+            "vulnerable": vulnerable,
+            "details": "BitLocker is OFF" if vulnerable else "BitLocker is ON",
+            "severity": "HIGH" if vulnerable else "LOW",
+            "fix_available": True,
+            "check_name": "disk_encryption"
+        }
+    
+    def check_browser_security(self) -> Dict[str, Any]:
+        """Check browser security settings"""
+        firefox_profiles = Path(os.environ.get('APPDATA', '')) / 'Mozilla' / 'Firefox' / 'Profiles'
+        
+        configured = firefox_profiles.exists()
+        
+        return {
+            "name": "Browser Security",
+            "vulnerable": not configured,
+            "details": "Browser security not configured" if not configured else "Browser configured",
+            "severity": "MEDIUM" if not configured else "LOW",
+            "fix_available": True,
+            "check_name": "browser_security"
