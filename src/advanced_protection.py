@@ -349,6 +349,20 @@ class MalwareScanner:
         
         # Auto-quarantine setting
         self.auto_quarantine = config.get('advanced_protection.malware_scanning.auto_quarantine', False) if config else False
+        self.quarantine_min_confidence = (
+            config.get('advanced_protection.malware_scanning.quarantine_min_confidence', 'high')
+            if config else 'high'
+        )
+        self.excluded_path_fragments = [
+            fragment.lower() for fragment in (
+                config.get('advanced_protection.malware_scanning.exclude_paths', [])
+                if config else []
+            )
+        ] or [
+            r'\appdata\local\microsoft\edge\user data\\',
+            r'\appdata\local\microsoft\office\\',
+            r'\appdata\local\microsoft\teamsmeetingadd-in\\',
+        ]
         
     def _load_yara_rules(self):
         """Load YARA rules for malware detection"""
@@ -388,12 +402,12 @@ class MalwareScanner:
                 ($ps1 or $ps2 or $ps3) and ($ps4 or $ps5) and filesize < 50KB
         }
         
-        rule Malware_Indicator_Strings {
+        rule Ransomware_Family_Strings {
             strings:
                 $locky = "locky" nocase
                 $wannacry = "wannacry" nocase
-                $ransom = "ransom" nocase
-                $encrypt = "encrypt" nocase
+                $cerber = "cerber" nocase
+                $revil = "revil" nocase
             condition:
                 any of them
         }
@@ -435,13 +449,16 @@ class MalwareScanner:
             "malicious": False,
             "detections": [],
             "hash": None,
-            "quarantined": False
+            "quarantined": False,
+            "confidence": "none"
         }
         
         # Validate file path
         file_path = _normalize_path(file_path)
         if not file_path:
             self.logger.debug(f"Invalid file path: {file_path}")
+            return results
+        if self._is_excluded_path(file_path):
             return results
         
         try:
@@ -483,9 +500,10 @@ class MalwareScanner:
             self.logger.debug(f"Error scanning {file_path}: {e}")
             
         if results["malicious"]:
+            results["confidence"] = self._calculate_confidence(results["detections"])
             self.logger.warning(f"🚨 Malware detected: {file_path}")
             # Auto-quarantine if configured
-            if self.auto_quarantine:
+            if self.auto_quarantine and self._should_auto_quarantine(results["confidence"]):
                 results["quarantined"] = self.quarantine_manager.quarantine(file_path)
             
         return results
@@ -512,9 +530,15 @@ class MalwareScanner:
             skip_dirs = ['Windows', 'System32', 'WinSxS', 'AppData\\Local\\Temp', '$Recycle.Bin']
             if any(skip in root for skip in skip_dirs):
                 continue
+            if self._is_excluded_path(root):
+                continue
                 
             # Skip hidden directories
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith('.') and
+                not self._is_excluded_path(os.path.join(root, d))
+            ]
             
             for file in files:
                 # Validate filename
@@ -540,6 +564,38 @@ class MalwareScanner:
                         
         self.logger.info(f"Scan complete. Scanned {scanned} files, found {len(threats)} threats")
         return threats
+
+    def _is_excluded_path(self, path: str) -> bool:
+        """Skip trusted vendor/application folders that are noisy false-positive sources."""
+        normalized = path.lower()
+        return any(fragment in normalized for fragment in self.excluded_path_fragments)
+
+    def _calculate_confidence(self, detections: List[str]) -> str:
+        """Score detection confidence so quarantine only applies to stronger matches."""
+        normalized = " | ".join(detections).lower()
+
+        if "known malware hash" in normalized:
+            return "critical"
+
+        if "suspicious_pe_characteristics" in normalized or "powershell_encoded_command" in normalized:
+            return "high"
+
+        if "ransomware_family_strings" in normalized:
+            return "medium"
+
+        return "low"
+
+    def _should_auto_quarantine(self, confidence: str) -> bool:
+        """Only quarantine when confidence meets the configured threshold."""
+        ordering = {
+            "none": 0,
+            "low": 1,
+            "medium": 2,
+            "high": 3,
+            "critical": 4,
+        }
+        threshold = ordering.get(str(self.quarantine_min_confidence).lower(), 3)
+        return ordering.get(confidence, 0) >= threshold
 
 
 class NetworkMonitor:

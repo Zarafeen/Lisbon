@@ -72,8 +72,13 @@ advanced_protection:
   malware_scanning:
     enabled: true
     auto_quarantine: true
+    quarantine_min_confidence: "high"
     scan_schedule: "weekly"
     yara_rules: "config/malware_rules.yar"
+    exclude_paths:
+      - "\\AppData\\Local\\Microsoft\\Edge\\User Data\\"
+      - "\\AppData\\Local\\Microsoft\\Office\\"
+      - "\\AppData\\Local\\Microsoft\\TeamsMeetingAdd-in\\"
   
   network_monitoring:
     enabled: false  # Enable if scapy installed
