@@ -55,6 +55,14 @@ except ImportError:
 
 from src.utils import SystemInfo, Logger
 
+# Import sanitizer
+try:
+    from src.sanitizer import InputSanitizer
+    SANITIZER_AVAILABLE = True
+except ImportError:
+    SANITIZER_AVAILABLE = False
+    InputSanitizer = None
+
 
 class QuarantineManager:
     """Manage quarantined files"""
@@ -65,9 +73,17 @@ class QuarantineManager:
         self.quarantine_log = self.quarantine_dir / "quarantine_log.json"
         
     def quarantine(self, file_path: str) -> bool:
-        """Move file to quarantine"""
+        """Move file to quarantine with path validation"""
         try:
-            file_name = Path(file_path).name
+            # Validate file path
+            if SANITIZER_AVAILABLE and InputSanitizer:
+                safe_filename = InputSanitizer.sanitize_filename(Path(file_path).name)
+                if not safe_filename:
+                    return False
+            else:
+                safe_filename = Path(file_path).name
+            
+            file_name = safe_filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             quarantined_path = self.quarantine_dir / f"{timestamp}_{file_name}"
             
@@ -152,7 +168,14 @@ class RealTimeProtection:
         
         for directory in self.critical_dirs:
             if directory and directory.exists():
-                self.observer.schedule(event_handler, str(directory), recursive=True)
+                # Validate directory path
+                dir_str = str(directory)
+                if SANITIZER_AVAILABLE and InputSanitizer:
+                    # Basic validation - ensure it's a legitimate path
+                    if '..' in dir_str or dir_str.startswith('\\') and not dir_str.startswith('\\\\'):
+                        self.logger.warning(f"Skipping suspicious directory: {dir_str}")
+                        continue
+                self.observer.schedule(event_handler, dir_str, recursive=True)
                 self.logger.info(f"Monitoring: {directory}")
         
         if self.critical_dirs:
@@ -190,6 +213,11 @@ class RealTimeProtection:
                         proc_name = proc.info['name'].lower() if proc.info['name'] else ''
                         cmdline = ' '.join(proc.info['cmdline'] or []).lower()
                         
+                        # Sanitize for comparison
+                        if SANITIZER_AVAILABLE and InputSanitizer:
+                            proc_name = InputSanitizer.sanitize_command(proc_name, allow_spaces=True)
+                            cmdline = InputSanitizer.sanitize_command(cmdline, allow_spaces=True)
+                        
                         # Check for malicious patterns
                         for malicious in known_malicious:
                             if malicious in proc_name or malicious in cmdline:
@@ -210,13 +238,19 @@ class RealTimeProtection:
     
     def _alert_threat(self, message, process=None):
         """Alert about detected threat"""
+        # Sanitize message before logging
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            safe_message = InputSanitizer.sanitize_command(message)
+        else:
+            safe_message = message
+        
         alert = {
             "timestamp": datetime.now().isoformat(),
-            "message": message,
+            "message": safe_message,
             "process": process.info if process else None
         }
         self.suspicious_events.append(alert)
-        self.logger.error(f"🚨 THREAT DETECTED: {message}")
+        self.logger.error(f"🚨 THREAT DETECTED: {safe_message}")
         
         # Save to threat log
         try:
@@ -238,11 +272,23 @@ class FileMonitorHandler(FileSystemEventHandler):
         
     def on_modified(self, event):
         if not event.is_directory:
-            self._check_ransomware_pattern(event.src_path)
+            # Sanitize file path
+            safe_path = self._sanitize_path(event.src_path)
+            if safe_path:
+                self._check_ransomware_pattern(safe_path)
             
     def on_created(self, event):
         if not event.is_directory:
-            self._check_malicious_extension(event.src_path)
+            # Sanitize file path
+            safe_path = self._sanitize_path(event.src_path)
+            if safe_path:
+                self._check_malicious_extension(safe_path)
+    
+    def _sanitize_path(self, file_path):
+        """Sanitize file path"""
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            return InputSanitizer.sanitize_filename(file_path)
+        return file_path
             
     def _check_ransomware_pattern(self, file_path):
         """Check for ransomware-like file modifications"""
@@ -375,7 +421,9 @@ class MalwareScanner:
                     for line in f:
                         line = line.strip().lower()
                         if line and not line.startswith('#'):
-                            signatures.add(line)
+                            # Validate hash format (64 hex characters)
+                            if re.match(r'^[a-f0-9]{64}$', line):
+                                signatures.add(line)
                 self.logger.info(f"Loaded {len(signatures)} signatures from local file")
         except Exception as e:
             self.logger.debug(f"Could not load signatures: {e}")
@@ -383,13 +431,21 @@ class MalwareScanner:
         return signatures
     
     def scan_file(self, file_path: str) -> Dict[str, Any]:
-        """Scan a single file for malware"""
+        """Scan a single file for malware with path validation"""
         results = {
             "file": file_path,
             "malicious": False,
             "detections": [],
             "hash": None
         }
+        
+        # Validate file path
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            safe_path = InputSanitizer.sanitize_filename(file_path)
+            if not safe_path:
+                self.logger.debug(f"Invalid file path: {file_path}")
+                return results
+            file_path = safe_path
         
         try:
             # Check if file exists and is readable
@@ -438,7 +494,16 @@ class MalwareScanner:
         return results
     
     def scan_directory(self, directory: str, show_progress: bool = True) -> List[Dict[str, Any]]:
-        """Scan entire directory for malware with progress tracking"""
+        """Scan entire directory for malware with progress tracking and path validation"""
+        
+        # Validate directory path
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            safe_dir = InputSanitizer.sanitize_filename(directory)
+            if not safe_dir:
+                self.logger.error(f"Invalid directory path: {directory}")
+                return []
+            directory = safe_dir
+        
         self.logger.info(f"Scanning directory: {directory}")
         threats = []
         scanned = 0
@@ -457,6 +522,13 @@ class MalwareScanner:
             dirs[:] = [d for d in dirs if not d.startswith('.')]
             
             for file in files:
+                # Validate filename
+                if SANITIZER_AVAILABLE and InputSanitizer:
+                    safe_file = InputSanitizer.sanitize_filename(file)
+                    if not safe_file:
+                        continue
+                    file = safe_file
+                
                 file_path = os.path.join(root, file)
                 ext = os.path.splitext(file)[1].lower()
                 
@@ -553,6 +625,14 @@ class NetworkMonitor:
         ]
         
         ip = packet[scapy.IP].dst
+        
+        # Validate IP format
+        if SANITIZER_AVAILABLE and InputSanitizer:
+            valid_ip = InputSanitizer.sanitize_ip(ip)
+            if not valid_ip:
+                return
+            ip = valid_ip
+        
         for network in suspicious_networks:
             if ip.startswith(network):
                 if ip not in self.suspicious_ips:
@@ -601,6 +681,14 @@ class VulnerabilityScanner:
                         try:
                             name = winreg.QueryValueEx(subkey, "DisplayName")[0]
                             version = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
+                            
+                            # Sanitize software name
+                            if SANITIZER_AVAILABLE and InputSanitizer:
+                                safe_name = InputSanitizer.sanitize_command(name)
+                                if not safe_name:
+                                    i += 1
+                                    continue
+                                name = safe_name
                             
                             # Skip duplicates and empty names
                             if not name or name in scanned_software:
@@ -681,7 +769,7 @@ class BehavioralAnalyzer:
             self.logger.warning("ML libraries not available - behavioral analysis limited")
     
     def collect_process_features(self) -> List[Dict[str, Any]]:
-        """Collect features for running processes"""
+        """Collect features for running processes with sanitization"""
         features = []
         
         for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
@@ -704,9 +792,17 @@ class BehavioralAnalyzer:
                     except:
                         pass
                 
+                proc_name = proc.info['name'] or 'unknown'
+                
+                # Sanitize process name
+                if SANITIZER_AVAILABLE and InputSanitizer:
+                    proc_name = InputSanitizer.sanitize_process_name(proc_name)
+                    if not proc_name:
+                        proc_name = 'unknown'
+                
                 features.append({
                     'pid': proc.info['pid'],
-                    'name': proc.info['name'] or 'unknown',
+                    'name': proc_name,
                     'cpu': cpu,
                     'memory': memory,
                     'threads': threads,
