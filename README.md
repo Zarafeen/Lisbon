@@ -20,8 +20,8 @@ An AI-powered security agent that automatically audits and fixes vulnerabilities
 
 ```bash
 # Clone the repository
-git clone https://github.com/Zarafeen/security-agent.git
-cd security-agent
+git clone https://github.com/Zarafeen/lisbon
+cd lisbon
 
 # Install dependencies
 pip install -r requirements.txt
