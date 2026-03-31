@@ -3,7 +3,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)
 ![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
 
-# 🔒 Security Agent - Autonomous PC Security Tool
+# 🔒 Liston - Autonomous PC Security Tool
 
 An AI-powered security agent that automatically audits and fixes vulnerabilities on your PC. No more manual security checks - let the agent handle it!
 
