@@ -59,7 +59,7 @@ reporting:
   email_reports: false
   email_recipient: "admin@example.com"
 
-# Add advanced protection settings
+# Advanced Protection Settings
 advanced_protection:
   real_time:
     enabled: true
@@ -90,3 +90,31 @@ advanced_protection:
     enabled: true
     use_ml: true
     anomaly_threshold: 0.1
+
+# Threat Logging (Optional)
+threat_logging:
+  enabled: true
+  database: "threats.db"
+  log_file: "threat_log.json"
+  retention_days: 90
+  alert_on_critical: true
+  email_alerts:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    sender: "security@example.com"
+    recipient: "admin@example.com"
+  desktop_notifications: true
+
+# Performance (Optional)
+performance:
+  max_cpu_percent: 50
+  max_memory_mb: 500
+  scan_priority: "low"
+  background_scan: true
+
+# Quarantine (Optional)
+quarantine:
+  enabled: true
+  directory: "./quarantine"
+  retention_days: 30
