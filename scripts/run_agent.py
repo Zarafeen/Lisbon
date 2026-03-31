@@ -2,9 +2,11 @@
 """Quick launcher for Security Agent with Advanced Features"""
 
 import sys
+import time  # MOVED: Import time at the top
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
 
 def main():
     print("🔒 Security Agent - Advanced Edition")
@@ -51,9 +53,17 @@ def main():
         if not path:
             path = None
         threats = agent.scan_for_malware(path)
+        if threats:
+            print(f"\nFound {len(threats)} threats!")
+        else:
+            print("\nNo threats found.")
         
     elif choice == "6":
         vulns = agent.scan_vulnerabilities()
+        if vulns:
+            print(f"\nFound {len(vulns)} vulnerable applications!")
+        else:
+            print("\nNo vulnerabilities found.")
         
     elif choice == "7":
         print("\n🌐 Starting Network Monitoring...")
@@ -67,30 +77,38 @@ def main():
             
     elif choice == "8":
         anomalies = agent.analyze_behavior()
+        if anomalies:
+            print(f"\nFound {len(anomalies)} anomalous processes!")
+        else:
+            print("\nNo anomalies detected.")
         
     elif choice == "9":
         print("\n🛡️ FULL SECURITY SUITE ACTIVATED")
         print("=" * 60)
         
         # Run all features
+        print("\n📊 Running Security Audit...")
         agent.run_audit(save_report=True)
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         
+        print("\n🦠 Running Malware Scan...")
         agent.scan_for_malware()
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         
+        print("\n🔍 Running Vulnerability Scan...")
         agent.scan_vulnerabilities()
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         
+        print("\n🧠 Running Behavioral Analysis...")
         agent.analyze_behavior()
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         
         print("\n🚨 Starting Real-Time Protection...")
+        print("Press Ctrl+C to stop all protection...")
         try:
             agent.start_real_time_protection()
-            print("\nPress Ctrl+C to stop all protection...")
             while True:
-                time.sleep(1)
+                time.sleep(1)  # Now time is imported
         except KeyboardInterrupt:
             agent.stop_real_time_protection()
             print("\n✅ All protection stopped")
@@ -98,6 +116,6 @@ def main():
     else:
         print("Exiting...")
 
+
 if __name__ == "__main__":
-    import time
     main()
