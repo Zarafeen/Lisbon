@@ -58,3 +58,35 @@ reporting:
   retention_days: 30
   email_reports: false
   email_recipient: "admin@example.com"
+
+# Add advanced protection settings
+advanced_protection:
+  real_time:
+    enabled: true
+    monitor_directories:
+      - "Desktop"
+      - "Documents"
+      - "Downloads"
+    ransomware_threshold: 100  # files modified in 60 seconds
+  
+  malware_scanning:
+    enabled: true
+    auto_quarantine: true
+    scan_schedule: "weekly"
+    yara_rules: "config/malware_rules.yar"
+  
+  network_monitoring:
+    enabled: false  # Enable if scapy installed
+    detect_arp_spoofing: true
+    detect_port_scan: true
+    suspicious_ips_file: "config/suspicious_ips.txt"
+  
+  vulnerability_scanning:
+    enabled: true
+    check_cve: true
+    cve_database: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+  
+  behavioral_analysis:
+    enabled: true
+    use_ml: true
+    anomaly_threshold: 0.1
