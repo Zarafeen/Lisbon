@@ -1,0 +1,60 @@
+# Security Agent Configuration
+agent:
+  name: "SecurityAgent"
+  version: "1.0.0"
+  auto_fix: true
+  log_level: "INFO"
+  report_format: "txt"  # txt, json, html
+
+# Audit settings
+audit:
+  enabled_checks:
+    - windows_updates
+    - firewall_status
+    - antivirus_status
+    - dns_security
+    - webrtc_leaks
+    - telemetry
+    - open_ports
+    - suspicious_processes
+    - password_policy
+    - disk_encryption
+    - browser_security
+    - network_shares
+    - autostart_items
+    - scheduled_tasks
+    - permissions
+    - registry_security
+    - event_logs
+    - user_accounts
+    - firewall_rules
+    - service_configs
+  
+  severity_weights:
+    CRITICAL: 10
+    HIGH: 5
+    MEDIUM: 2
+    LOW: 1
+
+# Fix settings
+fix:
+  auto_apply: true
+  require_confirmation: false
+  backup_before_fix: true
+  max_retries: 3
+
+# Monitoring
+monitor:
+  enabled: false
+  interval_seconds: 300
+  alert_on_critical: true
+  web_dashboard: false
+  dashboard_port: 5000
+
+# Reporting
+reporting:
+  save_reports: true
+  report_directory: "./reports"
+  retention_days: 30
+  email_reports: false
+  email_recipient: "admin@example.com"
