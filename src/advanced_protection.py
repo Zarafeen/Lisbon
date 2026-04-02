@@ -132,6 +132,12 @@ class RealTimeProtection:
         self.file_activity = {}
         self.running = True
         self.quarantine_manager = QuarantineManager()
+        # Allowlist common user apps so RTP doesn't kill browsers by default
+        default_safe = {"opera.exe", "chrome.exe", "msedge.exe", "firefox.exe"}
+        safe_from_config = set(config.get('advanced_protection.real_time.safe_processes', [])) if config else set()
+        self.safe_processes = {p.lower() for p in default_safe | safe_from_config}
+        self.process_alert_cooldown = {}
+        self.alert_cooldown_seconds = 60
         
         # Critical directories to monitor
         user_profile = os.environ.get('USERPROFILE', '')
@@ -212,6 +218,10 @@ class RealTimeProtection:
                     try:
                         proc_name = proc.info['name'].lower() if proc.info['name'] else ''
                         cmdline = ' '.join(proc.info['cmdline'] or []).lower()
+
+                        # Skip allowlisted processes
+                        if proc_name in self.safe_processes:
+                            continue
                         
                         # Sanitize for comparison
                         if SANITIZER_AVAILABLE and InputSanitizer:
@@ -221,12 +231,16 @@ class RealTimeProtection:
                         # Check for malicious patterns
                         for malicious in known_malicious:
                             if malicious in proc_name or malicious in cmdline:
+                                last_alert = self.process_alert_cooldown.get(proc_name, 0)
+                                if time.time() - last_alert < self.alert_cooldown_seconds:
+                                    continue
+                                self.process_alert_cooldown[proc_name] = time.time()
                                 self.logger.warning(f"⚠️ Suspicious process detected: {proc_name}")
                                 self._alert_threat(f"Suspicious process: {proc_name}", proc)
                                 try:
                                     proc.kill()
                                     self.logger.info(f"Killed suspicious process: {proc_name}")
-                                except:
+                                except Exception:
                                     pass
                                 
                     except (psutil.NoSuchProcess, psutil.AccessDenied):

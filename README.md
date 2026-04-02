@@ -108,6 +108,20 @@ What this means:
 - quarantine only happens for stronger detections
 - noisy Microsoft vendor folders are skipped by default
 
+### Real-Time Protection Safe Processes
+
+Real-Time Protection now keeps a small allowlist of common browsers so they are not killed by default. You can extend it in `cofigs/settings.yaml`:
+
+```yaml
+advanced_protection:
+  real_time:
+    safe_processes:
+      - "opera.exe"
+      - "chrome.exe"
+      - "msedge.exe"
+      - "firefox.exe"
+```
+
 ## Recommended Scan Targets
 
 Safer first-scan locations:
