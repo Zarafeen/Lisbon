@@ -53,22 +53,57 @@ class SecurityAuditor:
         return self.vulnerabilities
     
     def check_windows_updates(self) -> Dict[str, Any]:
-        """Check Windows update status"""
+        """Check Windows update status - improved accuracy"""
         if self.system.get_os() != "Windows":
             return {"name": "Windows Updates", "vulnerable": False, "details": "Not applicable"}
         
+        # Check using Get-HotFix for installed updates
         result = self.system.run_powershell(
-            "Get-WindowsUpdate -IsInstalled -ErrorAction SilentlyContinue | Select-Object -First 1"
+            "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 1 | ForEach-Object { $_.InstalledOn }"
         )
         
-        vulnerable = not result or "No updates" in result
+        # Check if there's a recent update (within 30 days)
+        vulnerable = True
+        try:
+            if result and result != "Error:":
+                from datetime import datetime, timedelta
+                raw = result.strip().splitlines()[0].strip()
+                parsed_date = None
+                # Try common US date formats returned by Get-HotFix
+                date_formats = [
+                    "%m/%d/%Y %I:%M:%S %p",          # 03/08/2026 10:22:12 PM
+                    "%A, %B %d, %Y %I:%M:%S %p",     # Friday, April 3, 2026 12:00:00 AM
+                    "%m/%d/%Y"                       # 03/08/2026
+                ]
+                for fmt in date_formats:
+                    try:
+                        parsed_date = datetime.strptime(raw, fmt)
+                        break
+                    except ValueError:
+                        continue
+                
+                if not parsed_date:
+                    raise ValueError(f"Unrecognized date format: {raw}")
+                
+                last_update = parsed_date
+                days_since_update = (datetime.now() - last_update).days
+                # If updated within 30 days, consider it not vulnerable
+                if days_since_update <= 30:
+                    vulnerable = False
+                    details = f"Last update: {last_update.strftime('%Y-%m-%d')} ({days_since_update} days ago)"
+                else:
+                    details = f"No recent updates. Last update: {days_since_update} days ago"
+            else:
+                details = "Could not determine update status"
+        except:
+            details = "Unable to check update status"
         
         return {
             "name": "Windows Updates",
             "vulnerable": vulnerable,
-            "details": "Updates may be missing" if vulnerable else "Updates installed",
+            "details": details,
             "severity": "CRITICAL" if vulnerable else "LOW",
-            "fix_available": True,
+            "fix_available": False,  # Can't auto-fix, user must run Windows Update
             "check_name": "windows_updates"
         }
     
