@@ -108,6 +108,13 @@ What this means:
 - quarantine only happens for stronger detections
 - noisy Microsoft vendor folders are skipped by default
 
+## 🔧 DNS Protection
+
+For encrypted, reliable DNS on Windows, install Cloudflare WARP:
+1. Download from https://one.one.one.one/
+2. Install and turn WARP ON
+3. Lisbon sets secure DNS (1.1.1.1) on active Wi-Fi/Ethernet adapters, and the secure DNS list includes WARP loopback endpoints (127.0.2.2, 127.0.2.3).
+
 ### Real-Time Protection Safe Processes
 
 Real-Time Protection now keeps a small allowlist of common browsers so they are not killed by default. You can extend it in `cofigs/settings.yaml`:

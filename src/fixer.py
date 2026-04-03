@@ -53,19 +53,15 @@ class SecurityFixer:
     def fix_dns_security(self) -> Dict[str, Any]:
         """Configure secure DNS"""
         try:
-            # Set Cloudflare DNS
-            self.system.run_powershell("netsh interface ip set dns name='Wi-Fi' static 1.1.1.1")
-            self.system.run_powershell("netsh interface ip set dns name='Ethernet' static 1.1.1.1")
-            
-            # Block DNS leaks
-            self.system.run_powershell(
-                "netsh advfirewall firewall add rule name='BlockDNS_UDP' dir=out protocol=udp remoteport=53 action=block"
-            )
-            self.system.run_powershell(
-                "netsh advfirewall firewall add rule name='BlockDNS_TCP' dir=out protocol=tcp remoteport=53 action=block"
-            )
-            
-            return {"fixed": True, "description": "Set secure DNS (1.1.1.1) and blocked DNS leaks"}
+            # Set secure DNS on primary Wi-Fi/Ethernet adapters dynamically
+            ps_script = """
+            $targets = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.Name -like '*Wi-Fi*' -or $_.Name -like '*Ethernet*') } | Select-Object -First 2
+            foreach ($nic in $targets) {
+              Set-DnsClientServerAddress -InterfaceIndex $nic.IfIndex -ServerAddresses 1.1.1.1
+            }
+            """
+            self.system.run_powershell(ps_script)
+            return {"fixed": True, "description": "Set secure DNS (1.1.1.1) on active Wi-Fi/Ethernet adapters"}
         except Exception as e:
             return {"fixed": False, "description": f"Could not configure DNS: {e}"}
     
